@@ -1,0 +1,5 @@
+.env
+.envrc
+.direnv/
+*.egg-info/
+.vscode/
