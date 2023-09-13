@@ -3,14 +3,16 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional, Self, Sequence, Union
 
 import build123d as bd
 import gmsh
 import numpy as np
+import pymoab.core
+import pymoab.types
 from deprecated import deprecated
-from pymoab import core, types  # types: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -86,21 +88,50 @@ class Geometry:
 class Mesh:
     """Mesh."""
 
-    mesh_filename: str
+    _mesh_filename: str
 
-    def __init__(self, mesh_filename: str):
+    def __init__(self, mesh_filename: Optional[str] = None):
         """Initialize a mesh from a .msh file.
 
         Args:
-            mesh_filename: Gmsh .msh filename.
+            mesh_filename: Optional .msh filename. If not provided defaults to a
+            temporary file. Defaults to None.
         """
-        self.mesh_filename = mesh_filename
+        if not mesh_filename:
+            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as mesh_file:
+                mesh_filename = mesh_file.name
+        self._mesh_filename = mesh_filename
+
+    def __enter__(self):
+        if not gmsh.is_initialized():
+            gmsh.initialize()
+
+        gmsh.option.setNumber(
+            "General.Terminal",
+            1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+        )
+        gmsh.open(self._mesh_filename)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        gmsh.finalize()
+
+    def _save_changes(self):
+        gmsh.write(self._mesh_filename)
+
+    def write(self, filename: str):
+        """Write mesh to a .msh file.
+
+        Args:
+            filename: Path to write file.
+        """
+        with self:
+            gmsh.write(filename)
 
     @classmethod
     def mesh_geometry(
         cls,
         geometry: Geometry,
-        mesh_filename: Optional[str] = None,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
     ):
@@ -114,12 +145,7 @@ class Mesh:
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
-        try:
-            gmsh.initialize()
-            gmsh.option.setNumber(
-                "General.Terminal",
-                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-            )
+        with cls() as mesh:
             gmsh.model.add("stellarmesh_model")
 
             cmp = bd.Compound.make_compound(geometry.solids)
@@ -130,18 +156,8 @@ class Mesh:
             gmsh.option.set_number("Mesh.MeshSizeMax", max_mesh_size)
 
             gmsh.model.mesh.generate(2)
-
-            if not mesh_filename:
-                with tempfile.NamedTemporaryFile(
-                    suffix=".msh", delete=False
-                ) as mesh_file:
-                    mesh_filename = mesh_file.name
-
-            gmsh.write(mesh_filename)
-
-            return cls(mesh_filename)
-        finally:
-            gmsh.finalize()
+            mesh._save_changes()
+            return mesh
 
     def render(
         self,
@@ -162,15 +178,7 @@ class Mesh:
         Returns:
             Path to image file, either passed output_filename or a temporary file.
         """
-        try:
-            gmsh.initialize()
-            gmsh.fltk.initialize()
-
-            gmsh.option.setNumber(
-                "General.Terminal",
-                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-            )
-            gmsh.merge(self.mesh_filename)
+        with self:
             gmsh.option.setNumber("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
             gmsh.option.set_number("Mesh.Normals", normals)
@@ -184,53 +192,44 @@ class Mesh:
                 ) as temp_file:
                     output_filename = temp_file.name
 
-            gmsh.write(output_filename)
+            try:
+                gmsh.fltk.initialize()
+                gmsh.write(output_filename)
+            finally:
+                gmsh.fltk.finalize()
             return output_filename
 
-        finally:
-            gmsh.fltk.finalize()
-            gmsh.finalize()
 
+class MOABModel:
+    """MOAB Model."""
 
-class DAGMCGeometry:
-    """MOAB DAGMC geometry."""
+    # h5m_filename: str
+    _core: pymoab.core.Core
 
-    h5m_filename: str
-
-    def __init__(self, h5m_filename: str):
-        """Initialize a mesh from a .msh file.
+    def __init__(self, core: pymoab.core.Core):
+        """Initialize model from a pymoab core object.
 
         Args:
-            h5m_filename: DAGMC .h5m filename.
+            core: Pymoab core.
         """
-        self.h5m_filename = h5m_filename
+        self._core = core
 
-    @deprecated(reason="Prefer STL export/import.")
-    def _moab_add_vertices_manual_inefficient(
-        self, moab_core, all_node_coords, gmsh_surface_tag: int, surface: MOABSurface
-    ):
-        """Add vertices (very inefficiently) to MOAB.
+    @classmethod
+    def read_file(cls, h5m_file: str) -> Self:
+        """Initialize model from .h5m file.
 
-        Poorly implemented as all vertices are added to each surface.
+        Args:
+            h5m_file: File to load.
+
+        Returns:
+            Initialized model.
         """
-        _, _, node_tags = gmsh.model.mesh.get_elements(2, gmsh_surface_tag)
-        # We only have a single element type
-        node_tags = node_tags[0]
-        # node_tags is of form [t11, t12, t13, t21, t22, t23, ...]
-        # gmsh uses 1-based indexing for tags
-        node_tags = [tag - 1 for tag in node_tags]
+        core = pymoab.core.Core()
+        core.load_file(h5m_file)
+        return cls(core)
 
-        # Add vertices to MOAB core
-        # coords can be 1D array with 3*n or 2d array
-        moab_verts = moab_core.create_vertices(all_node_coords)
-        moab_core.add_entity(surface.handle, moab_verts)
-
-        # Add triangles to MOAB core
-        triangles = np.array(node_tags).reshape(-1, 3)
-        for triangle in triangles:
-            tri = [moab_verts[int(triangle[i])] for i in range(3)]
-            moab_triangle = moab_core.create_element(types.MBTRI, tri)
-            moab_core.add_entity(surface.handle, moab_triangle)
+    def write(self, filename: str):
+        self._core.write_file(filename)
 
     @staticmethod
     def _make_watertight(
@@ -263,69 +262,62 @@ class DAGMCGeometry:
             True find make_watertight in PATH. If string use the provided
             make_watertight binary path. Defaults to False.
         """
-        moab_core = core.Core()
+        core = pymoab.core.Core()
 
         tag_handles = {}
 
         sense_tag_name = "GEOM_SENSE_2"
         sense_tag_size = 2
-        tag_handles["surf_sense"] = moab_core.tag_get_handle(
+        tag_handles["surf_sense"] = core.tag_get_handle(
             sense_tag_name,
             sense_tag_size,
-            types.MB_TYPE_HANDLE,
-            types.MB_TAG_SPARSE,
+            pymoab.types.MB_TYPE_HANDLE,
+            pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
 
-        tag_handles["category"] = moab_core.tag_get_handle(
-            types.CATEGORY_TAG_NAME,
-            types.CATEGORY_TAG_SIZE,
-            types.MB_TYPE_OPAQUE,
-            types.MB_TAG_SPARSE,
+        tag_handles["category"] = core.tag_get_handle(
+            pymoab.types.CATEGORY_TAG_NAME,
+            pymoab.types.CATEGORY_TAG_SIZE,
+            pymoab.types.MB_TYPE_OPAQUE,
+            pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
 
-        tag_handles["name"] = moab_core.tag_get_handle(
-            types.NAME_TAG_NAME,
-            types.NAME_TAG_SIZE,
-            types.MB_TYPE_OPAQUE,
-            types.MB_TAG_SPARSE,
+        tag_handles["name"] = core.tag_get_handle(
+            pymoab.types.NAME_TAG_NAME,
+            pymoab.types.NAME_TAG_SIZE,
+            pymoab.types.MB_TYPE_OPAQUE,
+            pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
 
         # TODO(akoen): C2D and C2O set tag type to SPARSE, while cubit plugin is DENSE
         # https://github.com/Thea-Energy/stellarmesh/issues/1
         geom_dimension_tag_size = 1
-        tag_handles["geom_dimension"] = moab_core.tag_get_handle(
-            types.GEOM_DIMENSION_TAG_NAME,
+        tag_handles["geom_dimension"] = core.tag_get_handle(
+            pymoab.types.GEOM_DIMENSION_TAG_NAME,
             geom_dimension_tag_size,
-            types.MB_TYPE_INTEGER,
-            types.MB_TAG_SPARSE,
+            pymoab.types.MB_TYPE_INTEGER,
+            pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
 
         faceting_tol_tag_name = "FACETING_TOL"
         faceting_tol_tag_size = 1
-        tag_handles["faceting_tol"] = moab_core.tag_get_handle(
+        tag_handles["faceting_tol"] = core.tag_get_handle(
             faceting_tol_tag_name,
             faceting_tol_tag_size,
-            types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE,
+            pymoab.types.MB_TYPE_DOUBLE,
+            pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
 
         # Default tag, does not need to be created
-        tag_handles["global_id"] = moab_core.tag_get_handle(types.GLOBAL_ID_TAG_NAME)
+        tag_handles["global_id"] = core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
 
         known_surfaces: dict[int, MOABSurface] = {}
-        try:
-            gmsh.initialize()
-            gmsh.option.setNumber(
-                "General.Terminal",
-                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-            )
-            gmsh.open(mesh.mesh_filename)
-
+        with mesh:
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
             if len(volume_dimtags) != len(material_names):
@@ -333,49 +325,45 @@ class DAGMCGeometry:
                     "Number of volumes does not match number of material names"
                 )
             for i, volume_tag in enumerate(volume_tags):
-                volume_set_handle = moab_core.create_meshset()
+                volume_set_handle = core.create_meshset()
 
-                moab_core.tag_set_data(tag_handles["global_id"], volume_set_handle, i)
+                core.tag_set_data(tag_handles["global_id"], volume_set_handle, i)
 
-                moab_core.tag_set_data(
-                    tag_handles["geom_dimension"], volume_set_handle, 3
-                )
-                moab_core.tag_set_data(
-                    tag_handles["category"], volume_set_handle, "Volume"
-                )
+                core.tag_set_data(tag_handles["geom_dimension"], volume_set_handle, 3)
+                core.tag_set_data(tag_handles["category"], volume_set_handle, "Volume")
 
                 # Add the group set, which stores metadata about the volume
-                group_set = moab_core.create_meshset()
-                moab_core.tag_set_data(tag_handles["category"], group_set, "Group")
+                group_set = core.create_meshset()
+                core.tag_set_data(tag_handles["category"], group_set, "Group")
                 # TODO(akoen): support other materials
                 # https://github.com/Thea-Energy/neutronics-cad/issues/3
-                moab_core.tag_set_data(
+                core.tag_set_data(
                     tag_handles["name"], group_set, f"mat:{material_names[i]}"
                 )
-                moab_core.tag_set_data(tag_handles["geom_dimension"], group_set, 4)
+                core.tag_set_data(tag_handles["geom_dimension"], group_set, 4)
                 # TODO(akoen): should this be a parent-child relationship?
                 # https://github.com/Thea-Energy/neutronics-cad/issues/2
-                moab_core.add_entity(group_set, volume_set_handle)
+                core.add_entity(group_set, volume_set_handle)
 
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:
-                        surface_set_handle = moab_core.create_meshset()
+                        surface_set_handle = core.create_meshset()
                         surface = MOABSurface(handle=surface_set_handle)
                         surface.forward_volume = volume_set_handle
                         known_surfaces[surface_tag] = surface
 
-                        moab_core.tag_set_data(
+                        core.tag_set_data(
                             tag_handles["global_id"], surface.handle, surface_tag
                         )
-                        moab_core.tag_set_data(
+                        core.tag_set_data(
                             tag_handles["geom_dimension"], surface.handle, 2
                         )
-                        moab_core.tag_set_data(
+                        core.tag_set_data(
                             tag_handles["category"], surface.handle, "Surface"
                         )
-                        moab_core.tag_set_data(
+                        core.tag_set_data(
                             tag_handles["surf_sense"],
                             surface.handle,
                             surface.sense_data(),
@@ -387,44 +375,28 @@ class DAGMCGeometry:
                             gmsh.model.add_physical_group(2, [surface_tag])
                             gmsh.write(stl_file.name)
                             gmsh.model.remove_physical_groups()
-                            moab_core.load_file(stl_file.name, surface_set_handle)
+                            core.load_file(stl_file.name, surface_set_handle)
 
                     else:
                         # Surface already has a forward volume, so this must be the
                         # reverse volume.
                         surface = known_surfaces[surface_tag]
                         surface.reverse_volume = volume_set_handle
-                        moab_core.tag_set_data(
+                        core.tag_set_data(
                             tag_handles["surf_sense"],
                             surface.handle,
                             surface.sense_data(),
                         )
 
-                    moab_core.add_parent_child(volume_set_handle, surface.handle)
+                    core.add_parent_child(volume_set_handle, surface.handle)
 
-            all_entities = moab_core.get_entities_by_handle(0)
-            file_set = moab_core.create_meshset()
+            all_entities = core.get_entities_by_handle(0)
+            file_set = core.create_meshset()
             # TODO(akoen): faceting tol set to a random value
             # https://github.com/Thea-Energy/neutronics-cad/issues/5
             # faceting_tol required to be set for make_watertight, although its
             # significance is not clear
-            moab_core.tag_set_data(tag_handles["faceting_tol"], file_set, 1e-3)
-            moab_core.add_entities(file_set, all_entities)
+            core.tag_set_data(tag_handles["faceting_tol"], file_set, 1e-3)
+            core.add_entities(file_set, all_entities)
 
-            with tempfile.NamedTemporaryFile(suffix=".tmp.h5m") as tmp_file:
-                moab_core.write_file(tmp_file.name)
-                if make_watertight:
-                    watertight_path = (
-                        make_watertight
-                        if isinstance(make_watertight, str)
-                        else "make_watertight"
-                    )
-                    cls._make_watertight(tmp_file.name, filename, watertight_path)
-                else:
-                    shutil.copy(tmp_file.name, filename)
-
-                logger.info(f"Wrote MOAB mesh to {filename}")
-
-                return cls(filename)
-        finally:
-            gmsh.finalize()
+            return cls(core)
