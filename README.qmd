@@ -1,4 +1,7 @@
-# Stellarmesh
+---
+format: gfm
+title: Stellarmesh
+---
 
 <p align="center">
 <img src="doc/logo.png" width="80%">
@@ -6,19 +9,17 @@
 
 :warning: This library does not yet have a stable release.
 
-Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion
-neutronics workflows, inspired by
-[cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and
-[cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC).
+Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, inspired by [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC).
 
-**Notable features**: - Correctly implements surface sense
+**Notable features**:
+- Correctly implements surface sense
 
 # Examples
 
-<details>
-<summary>Module imports and configuration</summary>
-
-``` python
+```{python}
+# | code-fold: true
+# | code-summary: "Module imports and configuration"
+# | output: false
 import build123d as bd
 import stellarmesh as sm
 import logging
@@ -43,11 +44,10 @@ logging.basicConfig()
 logging.getLogger("stellarmesh").setLevel(logging.WARN)
 ```
 
-</details>
-
 ## Simple torus geometry
 
-``` python
+```{python}
+# | output: false
 solids = [bd.Solid.make_torus(1000, 100)]
 for i in range(3):
     solids.append(solids[-1].faces()[0].thicken(100))
@@ -61,19 +61,19 @@ h5m = sm.DAGMCGeometry.make_from_mesh(mesh, material_names=["a", "b", "c"])
 ```
 
 <p align="center">
-<img width="80%" src="doc/torus-mesh.png"> <br> <em>Volumes are properly
-tagged with surface sense.</em>
+<img width="80%" src="doc/torus-mesh.png">
+<br>
+<em>Volumes are properly tagged with surface sense.</em>
 </p>
 
 ### Check overlaps
-
-``` {bash}
+```{bash}
 ❯ overlap_check dagmc.h5m
 
 NOTICE: 
-     Performing overlap check using triangle vertex locations only.
-     Use the '-p' option to check more points on the triangle edges.
-     Run '$ overlap_check --help' for more information.
+	 Performing overlap check using triangle vertex locations only.
+	 Use the '-p' option to check more points on the triangle edges.
+	 Run '$ overlap_check --help' for more information.
 
 Running overlap check:
 100% |===============================================================>|+
@@ -81,8 +81,7 @@ No overlaps were found.
 ```
 
 ### Check materials
-
-``` {bash}
+```{bash}
 ❯ mbsize -ll dagmc.h5m | grep mat:| 
 
 NAME = mat:a
@@ -91,8 +90,7 @@ NAME = mat:c
 ```
 
 ### Check watertight
-
-``` {bash}
+```{bash}
 ❯ check_watertight dagmc.h5m
 
 number of surfaces=4
@@ -108,7 +106,8 @@ leaky volume ids=
 
 ## Stellarmesh logo
 
-``` python
+```{python}
+# | output: false
 cmp = bd.Compound.make_text("Stellarmesh", 14, font="Arial Black")
 solids = [f.thicken(10) for f in cmp.faces()]
 show_or_skip(solids)
@@ -124,7 +123,5 @@ mesh.render("doc/logo.png", rotation_xyz=(0, -2, 0), clipping=False)
 
 # Other libraries
 
-- Jonathan Shimwell’s
-  [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc)
-- Erik B. Knudsen’s
-  [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC)
+- Jonathan Shimwell's [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc)
+- Erik B. Knudsen's [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC)

@@ -3,3 +3,9 @@
 .direnv/
 *.egg-info/
 .vscode/
+*.h5m
+*.msh
+README_files/
+README.html
+__pycache__/
+

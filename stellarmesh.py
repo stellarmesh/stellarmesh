@@ -12,7 +12,7 @@ import numpy as np
 from deprecated import deprecated
 from pymoab import core, types  # types: ignore
 
-logger = logging.getLogger("neutronics-cad.stellarmesh")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,158 +32,97 @@ class MOABSurface:
         return [self.forward_volume, self.reverse_volume]
 
 
-class Model:
-    """Model to be meshed."""
+class Geometry:
+    """Geometry, representing a list of solids, to be meshed."""
 
-    _geometry: Optional[Sequence[bd.Solid]]
-    _material_names: Optional[Sequence[str]]
-    _mesh_filename: str
-    verbose: bool
+    solids: Sequence[bd.Solid]
 
-    def __init__(
-        self,
-        geometry: Optional[Sequence[bd.Solid]] = None,
-        material_names: Optional[Sequence[str]] = None,
-        *,
-        verbose: bool = False,
-    ):
-        """Construct a model.
+    def __init__(self, solids: Sequence[bd.Solid]):
+        """Construct geometry from solids.
 
         Args:
-            material_names: List of material_names for geometry. Must have length equal
-            to geometry.
-            geometry: Optional ordered iterable of solids. Defaults to None.
-            verbose: Whether to log verbosely. Default to False.
+            solids: Solids.
         """
-        if verbose:
-            logger.setLevel(logging.DEBUG)
-        else:
-            logger.setLevel(logging.WARN)
-
-        if geometry:
-            self._geometry = geometry
-            if material_names:
-                if len(material_names) != len(geometry):
-                    raise ValueError(
-                        "geometry and material_names must be of equal length."
-                    )
-                for i in range(len(geometry)):
-                    logger.info(
-                        f"Importing solid {i} with material {material_names[i]}"
-                    )
-
-        self._material_names = material_names
-        self.verbose = verbose
-
-    @classmethod
-    def _import_geometry_from_file(
-        cls,
-        geometry: bd.Shape,
-        material_names: Optional[Sequence[str]],
-        *,
-        verbose: bool,
-    ) -> Self:
-        solids = geometry.solids()
-        # logger.info(f"Geometry has {len(solids)} solids")
-        return cls(geometry=solids, material_names=material_names, verbose=verbose)
-
-    @classmethod
-    def import_brep(
-        cls,
-        filename: str,
-        material_names: Optional[Sequence[str]] = None,
-        *,
-        verbose: bool = False,
-    ) -> Self:
-        """Import model from brep (cadquery/build123d native) file.
-
-        Args:
-            filename: File path to import.
-            verbose: Enable verbose logging. Defaults to False.
-            material_names: Optional list of material_names for geometry. Must have
-            length equal to the number of solids in geometry. Defaults to None.
-
-        Returns:
-            Model.
-        """
-        # logger.info(f"Importing geometry from {filename}")
-        geometry = bd.import_brep(filename)
-        return cls._import_geometry_from_file(
-            geometry=geometry, material_names=material_names, verbose=verbose
-        )
+        logger.info(f"Importing {len(solids)} to geometry")
+        self.solids = solids
 
     @classmethod
     def import_step(
         cls,
         filename: str,
-        material_names: Optional[Sequence[str]] = None,
-        *,
-        verbose: bool = False,
     ) -> Self:
         """Import model from a step file.
 
         Args:
             filename: File path to import.
-            verbose: Enable verbose logging. Defaults to False.
-            material_names: Optional list of material_names for geometry. Must have
-            length equal to the number of solids in geometry. Defaults to None.
 
         Returns:
             Model.
         """
         geometry = bd.import_step(filename)
-        return cls._import_geometry_from_file(
-            geometry=geometry, material_names=material_names, verbose=verbose
-        )
+        solids = geometry.solids()
+        logger.info(f"Importing {len(solids)} from {filename}")
+        return cls(solids)
 
     @classmethod
-    def import_mesh(
+    def import_brep(
         cls,
         filename: str,
-        material_names: Optional[Sequence[str]] = None,
-        *,
-        verbose: bool = False,
     ) -> Self:
-        """Import model from an already meshed Gmsh .msh file.
+        """Import model from a brep (cadquery, build123d native) file.
 
         Args:
-            filename: File path to import
-            material_names: Optional List of material_names for geometry. Must have
-            length equal to the number of volumes in filename. Defaults to None.
-            verbose: Enable verbose logging. Defaults to False.
+            filename: File path to import.
 
         Returns:
             Model.
         """
-        model = cls(material_names=material_names)
-        model._mesh_filename = filename
-        model.verbose = verbose
-        return model
+        geometry = bd.import_brep(filename)
+        solids = geometry.solids()
+        logger.info(f"Importing {len(solids)} from {filename}")
+        return cls(solids)
 
-    def mesh(
-        self,
+
+class Mesh:
+    """Mesh."""
+
+    mesh_filename: str
+
+    def __init__(self, mesh_filename: str):
+        """Initialize a mesh from a .msh file.
+
+        Args:
+            mesh_filename: Gmsh .msh filename.
+        """
+        self.mesh_filename = mesh_filename
+
+    @classmethod
+    def mesh_geometry(
+        cls,
+        geometry: Geometry,
         mesh_filename: Optional[str] = None,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
     ):
-        """Mesh the model with Gmsh.
+        """Mesh solids with Gmsh.
 
         Args:
+            geometry: Geometry to be meshed.
             mesh_filename: Optional filename to store .msh file. Defaults to None.
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
         """
-        if not self._geometry:
-            raise ValueError("Model has no geometry defined")
-
-        logger.info(f"Meshing model with mesh size {min_mesh_size}, {max_mesh_size}")
+        logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
         try:
             gmsh.initialize()
-            gmsh.option.setNumber("General.Terminal", 1 if self.verbose else 0)
+            gmsh.option.setNumber(
+                "General.Terminal",
+                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+            )
             gmsh.model.add("stellarmesh_model")
 
-            cmp = bd.Compound.make_compound(self._geometry)
+            cmp = bd.Compound.make_compound(geometry.solids)
             gmsh.model.occ.import_shapes_native_pointer(cmp.wrapped._address())
             gmsh.model.occ.synchronize()
 
@@ -197,13 +136,14 @@ class Model:
                     suffix=".msh", delete=False
                 ) as mesh_file:
                     mesh_filename = mesh_file.name
-            self._mesh_filename = mesh_filename
 
             gmsh.write(mesh_filename)
+
+            return cls(mesh_filename)
         finally:
             gmsh.finalize()
 
-    def render_mesh(
+    def render(
         self,
         output_filename: Optional[str] = None,
         rotation_xyz: tuple[float, float, float] = (0, 0, 0),
@@ -226,12 +166,15 @@ class Model:
             gmsh.initialize()
             gmsh.fltk.initialize()
 
-            gmsh.option.setNumber("General.Terminal", 1 if self.verbose else 0)
-            gmsh.merge(self._mesh_filename)
+            gmsh.option.setNumber(
+                "General.Terminal",
+                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+            )
+            gmsh.merge(self.mesh_filename)
             gmsh.option.setNumber("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
             gmsh.option.set_number("Mesh.Normals", normals)
-            gmsh.option.set_number("General.Trackball", 1)
+            gmsh.option.set_number("General.Trackball", 0)
             gmsh.option.set_number("General.RotationX", rotation_xyz[0])
             gmsh.option.set_number("General.RotationY", rotation_xyz[1])
             gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
@@ -247,6 +190,20 @@ class Model:
         finally:
             gmsh.fltk.finalize()
             gmsh.finalize()
+
+
+class DAGMCGeometry:
+    """MOAB DAGMC geometry."""
+
+    h5m_filename: str
+
+    def __init__(self, h5m_filename: str):
+        """Initialize a mesh from a .msh file.
+
+        Args:
+            h5m_filename: DAGMC .h5m filename.
+        """
+        self.h5m_filename = h5m_filename
 
     @deprecated(reason="Prefer STL export/import.")
     def _moab_add_vertices_manual_inefficient(
@@ -275,8 +232,8 @@ class Model:
             moab_triangle = moab_core.create_element(types.MBTRI, tri)
             moab_core.add_entity(surface.handle, moab_triangle)
 
+    @staticmethod
     def _make_watertight(
-        self,
         input_filename: str,
         output_filename: str,
         binary_path: str = "make_watertight",
@@ -286,8 +243,11 @@ class Model:
             check=True,
         )
 
-    def mesh_to_moab(  # noqa: PLR0915
-        self,
+    @classmethod
+    def make_from_mesh(  # noqa: PLR0915
+        cls,
+        mesh: Mesh,
+        material_names: Sequence[str],
         filename: str = "dagmc.h5m",
         *,
         make_watertight: Union[bool, str] = False,
@@ -295,14 +255,14 @@ class Model:
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
-            filename: Output filename. Defaults to "dagmc.h5m".
+            mesh: Mesh from which to build DAGMC geometry.
+            material_names: Ordered list of material names matching number of
+            solids/volumes in Geometry/Mesh.
+            filename: Filename of the output .h5m file.
             make_watertight: Whether to run make_watertight on the produced file. If
             True find make_watertight in PATH. If string use the provided
             make_watertight binary path. Defaults to False.
         """
-        if not self._material_names:
-            raise ValueError("No material names assigned for model.")
-
         moab_core = core.Core()
 
         tag_handles = {}
@@ -360,12 +320,15 @@ class Model:
         known_surfaces: dict[int, MOABSurface] = {}
         try:
             gmsh.initialize()
-            gmsh.option.setNumber("General.Terminal", 1 if self.verbose else 0)
-            gmsh.open(self._mesh_filename)
+            gmsh.option.setNumber(
+                "General.Terminal",
+                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+            )
+            gmsh.open(mesh.mesh_filename)
 
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
-            if len(volume_dimtags) != len(self._material_names):
+            if len(volume_dimtags) != len(material_names):
                 raise ValueError(
                     "Number of volumes does not match number of material names"
                 )
@@ -387,7 +350,7 @@ class Model:
                 # TODO(akoen): support other materials
                 # https://github.com/Thea-Energy/neutronics-cad/issues/3
                 moab_core.tag_set_data(
-                    tag_handles["name"], group_set, f"mat:{self._material_names[i]}"
+                    tag_handles["name"], group_set, f"mat:{material_names[i]}"
                 )
                 moab_core.tag_set_data(tag_handles["geom_dimension"], group_set, 4)
                 # TODO(akoen): should this be a parent-child relationship?
@@ -448,7 +411,7 @@ class Model:
             moab_core.tag_set_data(tag_handles["faceting_tol"], file_set, 1e-3)
             moab_core.add_entities(file_set, all_entities)
 
-            with tempfile.NamedTemporaryFile(suffix=".h5m") as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=".tmp.h5m") as tmp_file:
                 moab_core.write_file(tmp_file.name)
                 if make_watertight:
                     watertight_path = (
@@ -456,11 +419,12 @@ class Model:
                         if isinstance(make_watertight, str)
                         else "make_watertight"
                     )
-                    self._make_watertight(tmp_file.name, filename, watertight_path)
+                    cls._make_watertight(tmp_file.name, filename, watertight_path)
                 else:
                     shutil.copy(tmp_file.name, filename)
 
                 logger.info(f"Wrote MOAB mesh to {filename}")
 
+                return cls(filename)
         finally:
             gmsh.finalize()
