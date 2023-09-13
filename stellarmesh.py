@@ -231,8 +231,9 @@ class Model:
             gmsh.option.setNumber("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
             gmsh.option.set_number("Mesh.Normals", normals)
-            gmsh.option.set_number("General.Trackball", rotation_xyz[0])
-            gmsh.option.set_number("General.RotationX", rotation_xyz[1])
+            gmsh.option.set_number("General.Trackball", 1)
+            gmsh.option.set_number("General.RotationX", rotation_xyz[0])
+            gmsh.option.set_number("General.RotationY", rotation_xyz[1])
             gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
             if not output_filename:
                 with tempfile.NamedTemporaryFile(
