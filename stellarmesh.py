@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
+from OCP.BOPAlgo import BOPAlgo_MakeConnected
 
 import build123d as bd
 import gmsh
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Geometry:
-    """Geometry, representing a list of solids, to be meshed."""
+    """Geometry, representing an ordered list of solids, to be meshed."""
 
     solids: Sequence[bd.Solid]
 
@@ -63,6 +64,24 @@ class Geometry:
         solids = geometry.solids()
         logger.info(f"Importing {len(solids)} from {filename}")
         return cls(solids)
+
+    def imprint(self) -> "Geometry":
+        """Imprint faces of current geometry.
+
+        Returns:
+            A new geometry with the imprinted and merged geometry.
+        """
+        bldr = BOPAlgo_MakeConnected()
+        bldr.SetRunParallel(theFlag=True)
+        bldr.SetUseOBB(theUseOBB=True)
+
+        for solid in self.solids:
+            if solid.wrapped is not None:
+                bldr.AddArgument(solid.wrapped)
+
+        bldr.Perform()
+        res = bd.Shape(bldr.Shape())
+        return type(self)(res.solids())
 
 
 class Mesh:
