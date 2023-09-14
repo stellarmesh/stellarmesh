@@ -4,13 +4,13 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
-from OCP.BOPAlgo import BOPAlgo_MakeConnected
 
 import build123d as bd
 import gmsh
 import numpy as np
 import pymoab.core
 import pymoab.types
+from OCP.BOPAlgo import BOPAlgo_MakeConnected
 
 logger = logging.getLogger(__name__)
 
@@ -310,22 +310,8 @@ class MOABModel:
             check=True,
         )
 
-    @classmethod
-    def make_from_mesh(  # noqa: PLR0915
-        cls,
-        mesh: Mesh,
-        material_names: Sequence[str],
-    ):
-        """Compose DAGMC MOAB .h5m file from mesh.
-
-        Args:
-            mesh: Mesh from which to build DAGMC geometry.
-            material_names: Ordered list of material names matching number of
-            solids/volumes in Geometry/Mesh.
-            filename: Filename of the output .h5m file.
-        """
-        core = pymoab.core.Core()
-
+    @staticmethod
+    def _get_moab_tag_handles(core: pymoab.core.Core) -> dict[str, np.uint64]:
         tag_handles = {}
 
         sense_tag_name = "GEOM_SENSE_2"
@@ -377,6 +363,26 @@ class MOABModel:
 
         # Default tag, does not need to be created
         tag_handles["global_id"] = core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
+
+        return tag_handles
+
+    @classmethod
+    def make_from_mesh(
+        cls,
+        mesh: Mesh,
+        material_names: Sequence[str],
+    ):
+        """Compose DAGMC MOAB .h5m file from mesh.
+
+        Args:
+            mesh: Mesh from which to build DAGMC geometry.
+            material_names: Ordered list of material names matching number of
+            solids/volumes in Geometry/Mesh.
+            filename: Filename of the output .h5m file.
+        """
+        core = pymoab.core.Core()
+
+        tag_handles = cls._get_moab_tag_handles(core)
 
         known_surfaces: dict[int, _Surface] = {}
         with mesh:
