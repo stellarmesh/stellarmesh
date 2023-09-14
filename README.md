@@ -4,21 +4,22 @@
 <img src="doc/logo.png" width="80%">
 </p>
 
-:warning: This library does not yet have a stable release.
+:warning: This library is in development. Expect breaking changes and bugs, and feel free to contribute.
 
-Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion
-neutronics workflows, inspired by
-[cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and
-[cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC).
+Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC) in an attempt to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin).
 
-**Notable features**: - Correctly implements surface sense
+**Progress**:
+
+- [x] Correctly implements surface sense
+- [x] Imprinting and merging of conformal geometry
+- [ ] Programatic manipulation of .h5m tags e.g. materials
 
 # Examples
 
 <details>
 <summary>Module imports and configuration</summary>
 
-``` python
+```python
 import build123d as bd
 import stellarmesh as sm
 import logging
@@ -47,7 +48,7 @@ logging.getLogger("stellarmesh").setLevel(logging.WARN)
 
 ## Simple torus geometry
 
-``` python
+```python
 solids = [bd.Solid.make_torus(1000, 100)]
 for i in range(3):
     solids.append(solids[-1].faces()[0].thicken(100))
@@ -65,12 +66,13 @@ h5m = sm.DAGMCGeometry.make_from_mesh(mesh, material_names=["a", "b", "c"])
 tagged with surface sense.</em>
 </p>
 
-### Check overlaps
+<details>
+<summary>Check overlaps</summary>
 
-``` {bash}
+```{bash}
 ❯ overlap_check dagmc.h5m
 
-NOTICE: 
+NOTICE:
      Performing overlap check using triangle vertex locations only.
      Use the '-p' option to check more points on the triangle edges.
      Run '$ overlap_check --help' for more information.
@@ -80,19 +82,25 @@ Running overlap check:
 No overlaps were found.
 ```
 
-### Check materials
+</details>
 
-``` {bash}
-❯ mbsize -ll dagmc.h5m | grep mat:| 
+<details>
+<summary>Check materials</summary>
+
+```{bash}
+❯ mbsize -ll dagmc.h5m | grep mat:|
 
 NAME = mat:a
 NAME = mat:b
 NAME = mat:c
 ```
 
-### Check watertight
+</details>
 
-``` {bash}
+<details>
+<summary>Check watertight</summary>
+
+```{bash}
 ❯ check_watertight dagmc.h5m
 
 number of surfaces=4
@@ -106,9 +114,11 @@ leaky volume ids=
 0.173068 seconds
 ```
 
+</details>
+
 ## Stellarmesh logo
 
-``` python
+```python
 cmp = bd.Compound.make_text("Stellarmesh", 14, font="Arial Black")
 solids = [f.thicken(10) for f in cmp.faces()]
 show_or_skip(solids)
