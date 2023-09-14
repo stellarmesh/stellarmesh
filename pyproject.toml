@@ -9,7 +9,6 @@ dependencies = [
     "gmsh",
     "numpy",
     "pymoab",
-    "deprecated",
 ]
 
 [project.optional-dependencies]
@@ -51,3 +50,6 @@ target-version = "py39"
 
 [tool.ruff.pydocstyle]
 convention = "google"
+
+[tool.pyright]
+pythonVersion = "3.9"

@@ -1,37 +1,17 @@
 """GMSH wrapper and DAGMC geometry creator."""
 import logging
-import shutil
 import subprocess
 import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Optional, Self, Sequence, Union
+from typing import Optional, Sequence
 
 import build123d as bd
 import gmsh
 import numpy as np
 import pymoab.core
 import pymoab.types
-from deprecated import deprecated
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MOABSurface:
-    """Represents a MOAB surface."""
-
-    handle: np.uint64
-    forward_volume: np.uint64 = field(default=np.uint64(0))
-    reverse_volume: np.uint64 = field(default=np.uint64(0))
-
-    def sense_data(self):
-        """Get MOAB tag sense data.
-
-        Returns:
-            Sense data.
-        """
-        return [self.forward_volume, self.reverse_volume]
 
 
 class Geometry:
@@ -52,7 +32,7 @@ class Geometry:
     def import_step(
         cls,
         filename: str,
-    ) -> Self:
+    ) -> "Geometry":
         """Import model from a step file.
 
         Args:
@@ -70,7 +50,7 @@ class Geometry:
     def import_brep(
         cls,
         filename: str,
-    ) -> Self:
+    ) -> "Geometry":
         """Import model from a brep (cadquery, build123d native) file.
 
         Args:
@@ -103,6 +83,7 @@ class Mesh:
         self._mesh_filename = mesh_filename
 
     def __enter__(self):
+        """Enter mesh context, setting gmsh commands to operate on this mesh."""
         if not gmsh.is_initialized():
             gmsh.initialize()
 
@@ -114,6 +95,7 @@ class Mesh:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup (finalize) gmsh."""
         gmsh.finalize()
 
     def _save_changes(self):
@@ -200,6 +182,60 @@ class Mesh:
             return output_filename
 
 
+class _MOABEntity:
+    _core: pymoab.core.Core
+    handle: np.uint64
+
+    def __init__(self, core: pymoab.core.Core, handle: np.uint64):
+        self._core = core
+        self.handle = handle
+
+
+class MOABSurface(_MOABEntity):
+    """MOAB surface entity."""
+
+    @property
+    def adjacent_volumes(self) -> list["MOABVolume"]:
+        """Get adjacent volumes.
+
+        Returns:
+            Adjacent volumes.
+        """
+        parent_entities = self._core.get_parent_meshsets(self.handle)
+        return [MOABVolume(self._core, e) for e in parent_entities]
+
+
+class MOABVolume(_MOABEntity):
+    """MOAB volume entity."""
+
+    @property
+    def adjacent_surfaces(self) -> list["MOABSurface"]:
+        """Get adjacent surfaces.
+
+        Returns:
+            Adjacent surfaces.
+        """
+        child_entities = self._core.get_child_meshsets(self.handle)
+        return [MOABSurface(self._core, e) for e in child_entities]
+
+
+@dataclass
+class _Surface:
+    """Internal class for surface sense handling."""
+
+    handle: np.uint64
+    forward_volume: np.uint64 = field(default=np.uint64(0))
+    reverse_volume: np.uint64 = field(default=np.uint64(0))
+
+    def sense_data(self) -> list[np.uint64]:
+        """Get MOAB tag sense data.
+
+        Returns:
+            Sense data.
+        """
+        return [self.forward_volume, self.reverse_volume]
+
+
 class MOABModel:
     """MOAB Model."""
 
@@ -215,7 +251,7 @@ class MOABModel:
         self._core = core
 
     @classmethod
-    def read_file(cls, h5m_file: str) -> Self:
+    def read_file(cls, h5m_file: str) -> "MOABModel":
         """Initialize model from .h5m file.
 
         Args:
@@ -229,14 +265,27 @@ class MOABModel:
         return cls(core)
 
     def write(self, filename: str):
+        """Write MOAB model to .h5m, .vtk, or other file.
+
+        Args:
+            filename: Filename with format-appropriate extension.
+        """
         self._core.write_file(filename)
 
     @staticmethod
-    def _make_watertight(
+    def make_watertight(
         input_filename: str,
         output_filename: str,
         binary_path: str = "make_watertight",
     ):
+        """Make mesh watertight.
+
+        Args:
+            input_filename: Input .h5m filename.
+            output_filename: Output watertight .h5m filename.
+            binary_path: Path to make_watertight or default to find in path. Defaults to
+            "make_watertight".
+        """
         subprocess.run(
             [binary_path, input_filename, "-o", output_filename],  # noqa
             check=True,
@@ -247,9 +296,6 @@ class MOABModel:
         cls,
         mesh: Mesh,
         material_names: Sequence[str],
-        filename: str = "dagmc.h5m",
-        *,
-        make_watertight: Union[bool, str] = False,
     ):
         """Compose DAGMC MOAB .h5m file from mesh.
 
@@ -258,9 +304,6 @@ class MOABModel:
             material_names: Ordered list of material names matching number of
             solids/volumes in Geometry/Mesh.
             filename: Filename of the output .h5m file.
-            make_watertight: Whether to run make_watertight on the produced file. If
-            True find make_watertight in PATH. If string use the provided
-            make_watertight binary path. Defaults to False.
         """
         core = pymoab.core.Core()
 
@@ -292,7 +335,7 @@ class MOABModel:
             create_if_missing=True,
         )
 
-        # TODO(akoen): C2D and C2O set tag type to SPARSE, while cubit plugin is DENSE
+        # TODO(akoen): C2D and C2O set tag type to DENSE, while cubit plugin is SPARSE
         # https://github.com/Thea-Energy/stellarmesh/issues/1
         geom_dimension_tag_size = 1
         tag_handles["geom_dimension"] = core.tag_get_handle(
@@ -316,7 +359,7 @@ class MOABModel:
         # Default tag, does not need to be created
         tag_handles["global_id"] = core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
 
-        known_surfaces: dict[int, MOABSurface] = {}
+        known_surfaces: dict[int, _Surface] = {}
         with mesh:
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
@@ -328,19 +371,15 @@ class MOABModel:
                 volume_set_handle = core.create_meshset()
 
                 core.tag_set_data(tag_handles["global_id"], volume_set_handle, i)
-
                 core.tag_set_data(tag_handles["geom_dimension"], volume_set_handle, 3)
                 core.tag_set_data(tag_handles["category"], volume_set_handle, "Volume")
 
                 # Add the group set, which stores metadata about the volume
                 group_set = core.create_meshset()
                 core.tag_set_data(tag_handles["category"], group_set, "Group")
-                # TODO(akoen): support other materials
-                # https://github.com/Thea-Energy/neutronics-cad/issues/3
                 core.tag_set_data(
                     tag_handles["name"], group_set, f"mat:{material_names[i]}"
                 )
-                core.tag_set_data(tag_handles["geom_dimension"], group_set, 4)
                 # TODO(akoen): should this be a parent-child relationship?
                 # https://github.com/Thea-Energy/neutronics-cad/issues/2
                 core.add_entity(group_set, volume_set_handle)
@@ -350,7 +389,7 @@ class MOABModel:
                 for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:
                         surface_set_handle = core.create_meshset()
-                        surface = MOABSurface(handle=surface_set_handle)
+                        surface = _Surface(handle=surface_set_handle)
                         surface.forward_volume = volume_set_handle
                         known_surfaces[surface_tag] = surface
 
@@ -400,3 +439,29 @@ class MOABModel:
             core.add_entities(file_set, all_entities)
 
             return cls(core)
+
+    def _get_entities_of_geom_dimension(self, dim: int) -> list[np.uint64]:
+        dim_tag = self._core.tag_get_handle(pymoab.types.GEOM_DIMENSION_TAG_NAME)
+        return self._core.get_entities_by_type_and_tag(
+            0, pymoab.types.MBENTITYSET, dim_tag, [dim]
+        )
+
+    @property
+    def surfaces(self):
+        """Get surfaces in this model.
+
+        Returns:
+            Surfaces.
+        """
+        surface_handles = self._get_entities_of_geom_dimension(2)
+        return [MOABSurface(self._core, h) for h in surface_handles]
+
+    @property
+    def volumes(self):
+        """Get volumes in this model.
+
+        Returns:
+            Volumes.
+        """
+        volume_handles = self._get_entities_of_geom_dimension(3)
+        return [MOABVolume(self._core, h) for h in volume_handles]
