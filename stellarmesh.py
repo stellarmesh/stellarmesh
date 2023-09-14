@@ -19,51 +19,70 @@ class Geometry:
     """Geometry, representing an ordered list of solids, to be meshed."""
 
     solids: Sequence[bd.Solid]
+    material_names: Sequence[str]
 
-    def __init__(self, solids: Sequence[bd.Solid]):
+    def __init__(self, solids: Sequence[bd.Solid], material_names: Sequence[str]):
         """Construct geometry from solids.
 
         Args:
             solids: Solids.
+            material_names: List of materials. Must match length of solids.
         """
         logger.info(f"Importing {len(solids)} to geometry")
+        if len(material_names) != len(solids):
+            raise ValueError("Length of material_names must match length of solids.")
         self.solids = solids
+        self.material_names = material_names
 
+    # TODO(akoen): import_step and import_brep are not DRY
+    # https://github.com/Thea-Energy/stellarmesh/issues/2
     @classmethod
     def import_step(
         cls,
         filename: str,
+        material_names: str,
     ) -> "Geometry":
         """Import model from a step file.
 
         Args:
             filename: File path to import.
+            material_names: Ordered list of material names matching solids in file.
 
         Returns:
             Model.
         """
         geometry = bd.import_step(filename)
         solids = geometry.solids()
+        if len(material_names) != len(solids):
+            raise ValueError(
+                "Length of material_names must match number of solids in file."
+            )
         logger.info(f"Importing {len(solids)} from {filename}")
-        return cls(solids)
+        return cls(solids, material_names)
 
     @classmethod
     def import_brep(
         cls,
         filename: str,
+        material_names: str,
     ) -> "Geometry":
         """Import model from a brep (cadquery, build123d native) file.
 
         Args:
             filename: File path to import.
+            material_names: Ordered list of material names matching solids in file.
 
         Returns:
             Model.
         """
         geometry = bd.import_brep(filename)
         solids = geometry.solids()
+        if len(material_names) != len(solids):
+            raise ValueError(
+                "Length of material_names must match number of solids in file."
+            )
         logger.info(f"Importing {len(solids)} from {filename}")
-        return cls(solids)
+        return cls(solids, material_names)
 
     def imprint(self) -> "Geometry":
         """Imprint faces of current geometry.
@@ -81,7 +100,7 @@ class Geometry:
 
         bldr.Perform()
         res = bd.Shape(bldr.Shape())
-        return type(self)(res.solids())
+        return type(self)(res.solids(), self.material_names)
 
 
 class Mesh:
@@ -117,16 +136,20 @@ class Mesh:
         """Cleanup (finalize) gmsh."""
         gmsh.finalize()
 
-    def _save_changes(self):
+    def _save_changes(self, *, save_all: bool = True):
+        gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.write(self._mesh_filename)
 
-    def write(self, filename: str):
+    def write(self, filename: str, *, save_all: bool = True):
         """Write mesh to a .msh file.
 
         Args:
             filename: Path to write file.
+            save_all: whether to save all entities (or just physical groups). See
+            documentation for Mesh.SaveAll. Defaults to True.
         """
         with self:
+            gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
             gmsh.write(filename)
 
     @classmethod
@@ -149,15 +172,30 @@ class Mesh:
         with cls() as mesh:
             gmsh.model.add("stellarmesh_model")
 
-            cmp = bd.Compound.make_compound(geometry.solids)
-            gmsh.model.occ.import_shapes_native_pointer(cmp.wrapped._address())
+            material_solid_map = {}
+            for s, m in zip(geometry.solids, geometry.material_names):
+                dim_tags = gmsh.model.occ.import_shapes_native_pointer(
+                    s.wrapped._address()
+                )
+                if dim_tags[0][0] != 3:
+                    raise TypeError("Importing non-solid geometry.")
+
+                solid_tag = dim_tags[0][1]
+                if m not in material_solid_map:
+                    material_solid_map[m] = [solid_tag]
+                else:
+                    material_solid_map[m].append(solid_tag)
+
             gmsh.model.occ.synchronize()
+
+            for material, solid_tags in material_solid_map.items():
+                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
             gmsh.option.set_number("Mesh.MeshSizeMin", min_mesh_size)
             gmsh.option.set_number("Mesh.MeshSizeMax", max_mesh_size)
-
             gmsh.model.mesh.generate(2)
-            mesh._save_changes()
+
+            mesh._save_changes(save_all=True)
             return mesh
 
     def render(
@@ -180,7 +218,7 @@ class Mesh:
             Path to image file, either passed output_filename or a temporary file.
         """
         with self:
-            gmsh.option.setNumber("Mesh.SurfaceFaces", 1)
+            gmsh.option.set_number("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
             gmsh.option.set_number("Mesh.Normals", normals)
             gmsh.option.set_number("General.Trackball", 0)
@@ -370,14 +408,11 @@ class MOABModel:
     def make_from_mesh(
         cls,
         mesh: Mesh,
-        material_names: Sequence[str],
     ):
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
             mesh: Mesh from which to build DAGMC geometry.
-            material_names: Ordered list of material names matching number of
-            solids/volumes in Geometry/Mesh.
             filename: Filename of the output .h5m file.
         """
         core = pymoab.core.Core()
@@ -385,30 +420,48 @@ class MOABModel:
         tag_handles = cls._get_moab_tag_handles(core)
 
         known_surfaces: dict[int, _Surface] = {}
+        known_groups: dict[int, np.uint64] = {}
+
         with mesh:
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
-            if len(volume_dimtags) != len(material_names):
-                raise ValueError(
-                    "Number of volumes does not match number of material names"
-                )
             for i, volume_tag in enumerate(volume_tags):
+                # Add volume set
                 volume_set_handle = core.create_meshset()
-
-                core.tag_set_data(tag_handles["global_id"], volume_set_handle, i)
+                global_id = volume_set_handle
+                core.tag_set_data(tag_handles["global_id"], global_id, i)
                 core.tag_set_data(tag_handles["geom_dimension"], volume_set_handle, 3)
                 core.tag_set_data(tag_handles["category"], volume_set_handle, "Volume")
 
-                # Add the group set, which stores metadata about the volume
-                group_set = core.create_meshset()
-                core.tag_set_data(tag_handles["category"], group_set, "Group")
-                core.tag_set_data(
-                    tag_handles["name"], group_set, f"mat:{material_names[i]}"
-                )
+                # Add volume to its physical group, which stores metadata incl. material
                 # TODO(akoen): should this be a parent-child relationship?
                 # https://github.com/Thea-Energy/neutronics-cad/issues/2
+                vol_groups = gmsh.model.get_physical_groups_for_entity(3, volume_tag)
+                if (num_groups := len(vol_groups)) != 1:
+                    raise ValueError(
+                        f"Volume with tag {volume_tag} and global_id {global_id} "
+                        f"belongs to {num_groups} physical groups, should be 1"
+                    )
+
+                if (vol_group := vol_groups[0]) not in known_groups:
+                    mat_name = gmsh.model.get_physical_name(3, vol_group)
+                    group_set = core.create_meshset()
+                    core.tag_set_data(tag_handles["category"], group_set, "Group")
+                    core.tag_set_data(tag_handles["name"], group_set, f"{mat_name}")
+                    core.tag_set_data(tag_handles["global_id"], group_set, vol_group)
+                    known_groups[vol_group] = group_set
+                else:
+                    group_set = known_groups[vol_group]
+
                 core.add_entity(group_set, volume_set_handle)
 
+                # Add surfaces to MOAB core, respecting surface sense.
+                # Logic: Gmsh meshes volumes in order. When it gets to the first volume,
+                # it points all adjacent surfaces normals outward. For each subsequent
+                # volume, it points the surface normals outwards iff the surface hasn't
+                # yet been encountered. Thus, the first time a surface is encountered,
+                # the current volume has a forward sense and the second time a reverse
+                # sense.
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
@@ -433,12 +486,13 @@ class MOABModel:
                             surface.sense_data(),
                         )
 
+                        # Write surface to MOAB. STL export/import is very efficient.
                         with tempfile.NamedTemporaryFile(
                             suffix=".stl", delete=True
                         ) as stl_file:
-                            gmsh.model.add_physical_group(2, [surface_tag])
+                            group_tag = gmsh.model.add_physical_group(2, [surface_tag])
                             gmsh.write(stl_file.name)
-                            gmsh.model.remove_physical_groups()
+                            gmsh.model.remove_physical_groups([(2, group_tag)])
                             core.load_file(stl_file.name, surface_set_handle)
 
                     else:
