@@ -2,7 +2,7 @@
 <img src="doc/logo.png" width="80%">
 </p>
 
-:warning: This library is in development. Expect breaking changes and bugs, and feel free to contribute.
+:warning: This library is in development. Expect breaking changes and bugs, and feel welcome to contribute.
 
 Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC). The goal is to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin) to enable a fully-featured and open-source workflow.
 
