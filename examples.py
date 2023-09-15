@@ -28,7 +28,7 @@ logging.basicConfig()
 logging.getLogger("stellarmesh").setLevel(logging.INFO)
 # %% Simple torus geometry
 solids = [bd.Solid.make_torus(1000, 100)]
-for i in range(3):
+for _ in range(3):
     solids.append(solids[-1].faces()[0].thicken(100))
 solids = solids[1:]
 show_or_skip(solids, transparent=True)
