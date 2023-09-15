@@ -16,10 +16,11 @@ except:  # noqa
 
 
 def show_or_skip(*args, **kwargs):
+    """Show geometry only if OCP CAD Viewer is open."""
     if "ocp_vscode" in sys.modules:
         try:
             show(*args, **kwargs)
-        except:
+        except:  # noqa
             print("OCP viewer not available, skipping.")
 
 
