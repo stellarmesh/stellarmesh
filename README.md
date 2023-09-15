@@ -1,69 +1,73 @@
-# Stellarmesh
-
 <p align="center">
 <img src="doc/logo.png" width="80%">
 </p>
 
 :warning: This library is in development. Expect breaking changes and bugs, and feel free to contribute.
 
-Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC) in an attempt to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin).
+Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC). The goal is to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin) to enable a fully-featured and open-source workflow.
 
 **Progress**:
 
-- [x] Correctly implements surface sense
+- [x] Correct implementation of surface-sense
 - [x] Imprinting and merging of conformal geometry
 - [ ] Programatic manipulation of .h5m tags e.g. materials
+- [ ] Mesh refinement
+
+# Contents
+- [Contents](#contents)
+- [Installation](#installation)
+- [Examples](#examples)
+  - [Simple torus geometry](#simple-torus-geometry)
+- [Comparison to other libraries](#comparison-to-other-libraries)
+
+# Installation
+
+Stellarmesh is not yet available on PyPi, for now install with:
+```sh
+pip install https://github.com/Thea-Energy/stellarmesh.git
+```
 
 # Examples
+
+For more examples see `examples.py`
+
+## Simple torus geometry
 
 <details>
 <summary>Module imports and configuration</summary>
 
 ```python
+%load_ext autoreload
+%autoreload 2
 import build123d as bd
 import stellarmesh as sm
 import logging
-import sys
-
-try:
-    from ocp_vscode import show
-except:
-    print("ocp_vscode not installed, not showing geometry.")
-
-
-def show_or_skip(*args, **kwargs):
-    if "ocp_vscode" in sys.modules:
-        try:
-            show(*args, **kwargs)
-        except:
-            print("OCP viewer not available, skipping.")
-
 
 # Required to show logging in Jupyter
 logging.basicConfig()
-logging.getLogger("stellarmesh").setLevel(logging.WARN)
+logging.getLogger("stellarmesh").setLevel(logging.INFO)
 ```
 
 </details>
-
-## Simple torus geometry
 
 ```python
 solids = [bd.Solid.make_torus(1000, 100)]
 for i in range(3):
     solids.append(solids[-1].faces()[0].thicken(100))
 solids = solids[1:]
-show_or_skip(solids, transparent=True)
 
-geometry = sm.Geometry(solids)
+geometry = sm.Geometry(solids, material_names=["a", "a", "c"])
 mesh = sm.Mesh.mesh_geometry(geometry, min_mesh_size=50, max_mesh_size=50)
+mesh.write("test.msh")
 mesh.render("doc/torus-mesh.png", rotation_xyz=(90, 0, -90), normals=15)
-h5m = sm.DAGMCGeometry.make_from_mesh(mesh, material_names=["a", "b", "c"])
+
+h5m = sm.MOABModel.make_from_mesh(mesh)
+h5m.write("dagmc.h5m")
+h5m.write("dagmc.vtk")
 ```
 
 <p align="center">
-<img width="80%" src="doc/torus-mesh.png"> <br> <em>Volumes are properly
-tagged with surface sense.</em>
+<img width="80%" src="doc/torus-mesh.png"> <br> <em>Rendered mesh with normals.</em>
 </p>
 
 <details>
@@ -88,10 +92,9 @@ No overlaps were found.
 <summary>Check materials</summary>
 
 ```{bash}
-❯ mbsize -ll dagmc.h5m | grep mat:|
+❯ mbsize -ll dagmc.h5m | grep mat:
 
 NAME = mat:a
-NAME = mat:b
 NAME = mat:c
 ```
 
@@ -116,25 +119,21 @@ leaky volume ids=
 
 </details>
 
-## Stellarmesh logo
 
-```python
-cmp = bd.Compound.make_text("Stellarmesh", 14, font="Arial Black")
-solids = [f.thicken(10) for f in cmp.faces()]
-show_or_skip(solids)
+# Comparison to other libraries
 
-geometry = sm.Geometry(solids)
-mesh = sm.Mesh.mesh_geometry(geometry, min_mesh_size=1, max_mesh_size=2)
-mesh.render("doc/logo.png", rotation_xyz=(0, -2, 0), clipping=False)
-```
+|| Stellarmesh | [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc) |  [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC) | Cubit |
+|---| --- | --- | --- | --- |
+| Developer | Thea Energy | Jonathan Shimwell | Erik B. Knudsen | Coreform
+| Meshing backend | Gmsh | Gmsh | Gmsh/CQ |  Cubit |
+| In development | ✓ | ✓ | ✓ | ✓ |
+| Open-source | ✓ | ✓ | ✓ |   |
+| Surface-sense handling | ✓ |   | <sup>1</sup> | ✓ |
+| Mesh refinement |  |   | ✓ | ✓ |
+| Manipulation of .h5m files | <sup>2</sup> |   | | |
 
-<p align="center">
-<img src="doc/logo.png" width="80%">
-</p>
+<em>Note: Please file an issue if this table is out-of-date.</em>
 
-# Other libraries
+<sup>1</sup> In development on a personal branch
 
-- Jonathan Shimwell’s
-  [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc)
-- Erik B. Knudsen’s
-  [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC)
+<sup>2</sup> In development

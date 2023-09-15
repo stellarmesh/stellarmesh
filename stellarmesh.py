@@ -145,7 +145,7 @@ class Mesh:
 
         Args:
             filename: Path to write file.
-            save_all: whether to save all entities (or just physical groups). See
+            save_all: Whether to save all entities (or just physical groups). See
             documentation for Mesh.SaveAll. Defaults to True.
         """
         with self:
@@ -405,7 +405,7 @@ class MOABModel:
         return tag_handles
 
     @classmethod
-    def make_from_mesh(
+    def make_from_mesh(  # noqa: PLR0915
         cls,
         mesh: Mesh,
     ):
