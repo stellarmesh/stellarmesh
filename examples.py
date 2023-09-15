@@ -1,16 +1,17 @@
+"""Stellarmesh examples."""
 # %% Module imports and initialization
 # These examples are best run with the OCP CAD Viewer VSCode extension
 # to view CAD geometry.
-%load_ext autoreload
-%autoreload 2
-import build123d as bd
-import stellarmesh as sm
 import logging
 import sys
 
+import build123d as bd
+
+import stellarmesh as sm
+
 try:
     from ocp_vscode import show
-except:
+except:  # noqa
     print("ocp_vscode not installed, not showing geometry.")
 
 
@@ -46,6 +47,6 @@ cmp = bd.Compound.make_text("Stellarmesh", 14, font="Arial Black")
 solids = [f.thicken(10) for f in cmp.faces()]
 show_or_skip(solids)
 
-geometry = sm.Geometry(solids, [""]*len(solids))
+geometry = sm.Geometry(solids, [""] * len(solids))
 mesh = sm.Mesh.mesh_geometry(geometry, min_mesh_size=1, max_mesh_size=2)
 mesh.render("doc/logo.png", rotation_xyz=(0, -2, 0), clipping=False)
