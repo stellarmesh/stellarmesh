@@ -378,8 +378,6 @@ class MOABModel:
             create_if_missing=True,
         )
 
-        # TODO(akoen): C2D and C2O set tag type to DENSE, while cubit plugin is SPARSE
-        # https://github.com/Thea-Energy/stellarmesh/issues/1
         geom_dimension_tag_size = 1
         tag_handles["geom_dimension"] = core.tag_get_handle(
             pymoab.types.GEOM_DIMENSION_TAG_NAME,
