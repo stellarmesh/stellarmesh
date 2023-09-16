@@ -28,7 +28,7 @@ class Geometry:
             solids: Solids.
             material_names: List of materials. Must match length of solids.
         """
-        logger.info(f"Importing {len(solids)} to geometry")
+        logger.info(f"Importing {len(solids)} solids to geometry")
         if len(material_names) != len(solids):
             raise ValueError("Length of material_names must match length of solids.")
         self.solids = solids
@@ -94,17 +94,30 @@ class Geometry:
         bldr.SetRunParallel(theFlag=True)
         bldr.SetUseOBB(theUseOBB=True)
 
-        for solid in self.solids:
-            if solid.wrapped is not None:
-                bldr.AddArgument(solid.wrapped)
+        for new_solid in self.solids:
+            if new_solid.wrapped is not None:
+                bldr.AddArgument(new_solid.wrapped)
 
         bldr.Perform()
         res = bd.Shape(bldr.Shape())
-        return type(self)(res.solids(), self.material_names)
+        new_solids = res.solids()
+
+        # Track bd attributes (material, name, label) across imprinting
+        old_wrapped = [n.wrapped for n in self.solids]
+        for new_solid in new_solids:
+            old_matching = bldr.GetOrigins(new_solid.wrapped)
+            if (matching_len := old_matching.Size()) != 1:
+                raise RuntimeError(f"New solid derives from {matching_len} solids")
+            matching = [o.IsSame(old_matching.First()) for o in old_wrapped if o]
+            i = matching.index(True)
+            for attr in ["label", "material", "color"]:
+                new_solid.__setattr__(attr, self.solids[i].__getattribute__(attr))
+
+        return type(self)(new_solids, self.material_names)
 
 
 class Mesh:
-    """Mesh.
+    """A Gmsh mesh.
 
     As gmsh allows for only a single process, this class provides a context manager to
     set the gmsh api to operate on this mesh.
@@ -150,7 +163,7 @@ class Mesh:
         Args:
             filename: Path to write file.
             save_all: Whether to save all entities (or just physical groups). See
-            documentation for Mesh.SaveAll. Defaults to True.
+            Gmsh documentation for Mesh.SaveAll. Defaults to True.
         """
         with self:
             gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
