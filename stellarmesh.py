@@ -104,7 +104,11 @@ class Geometry:
 
 
 class Mesh:
-    """Mesh."""
+    """Mesh.
+
+    As gmsh allows for only a single process, this class provides a context manager to
+    set the gmsh api to operate on this mesh.
+    """
 
     _mesh_filename: str
 
