@@ -1,0 +1,35 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches:
+      - main  # Change this to your main branch name if necessary
+  pull_request:
+    branches:
+      - main  # Change this to your main branch name if necessary
+
+jobs:
+  code_quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install black ruff
+
+      - name: Check code formatting with Black
+        run: black --diff --color .  
+
+      - name: Run static analysis with Ruff
+        run: ruff check .
