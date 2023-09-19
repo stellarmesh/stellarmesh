@@ -30,6 +30,7 @@ jobs:
         path: dist/
 
   publish-to-pypi:
+    if: ${{ false }}  # disable until stable release of build123d
     name: >-
       Publish to Pypi
     needs:
