@@ -46,6 +46,7 @@ ignore = [
     "TRY003",  # Exception with string (vs. defining custom exception)
     "PLR2004", # Magic number
 ]
+include = ["*stellarmesh.py"]
 target-version = "py39"
 
 [tool.ruff.pydocstyle]
@@ -53,3 +54,7 @@ convention = "google"
 
 [tool.pyright]
 pythonVersion = "3.9"
+
+[tool.black]
+include = '.*stellarmesh\.py$'
+target-version = ["py39", "py310", "py311"]
