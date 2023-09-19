@@ -1,5 +1,5 @@
 <p align="center">
-<img src="doc/logo.png" width="80%">
+<img src="https://github.com/Thea-Energy/stellarmesh/raw/main/doc/logo.png" width="80%">
 </p>
 
 :warning: This library is in development. Expect breaking changes and bugs, and feel welcome to contribute.
@@ -67,7 +67,7 @@ h5m.write("dagmc.vtk")
 ```
 
 <p align="center">
-<img width="80%" src="doc/torus-mesh.png"> <br> <em>Rendered mesh with normals.</em>
+<img width="80%" src="https://github.com/Thea-Energy/stellarmesh/raw/main/doc/torus-mesh.png"> <br> <em>Rendered mesh with normals.</em>
 </p>
 
 <details>
