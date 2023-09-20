@@ -5,6 +5,9 @@
 .vscode/
 *.h5m
 *.msh
+*.vtk
+build/
+dist/
 README_files/
 README.html
 __pycache__/
