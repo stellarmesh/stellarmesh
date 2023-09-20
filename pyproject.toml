@@ -19,9 +19,6 @@ dev = ["black", "pre-commit", "ruff", "ocp_vscode"]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-py-modules = ["stellarmesh"]
-
 [tool.ruff]
 select = [
     "E",
