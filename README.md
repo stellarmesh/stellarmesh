@@ -16,50 +16,52 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 # Contents
 - [Contents](#contents)
 - [Installation](#installation)
-- [Examples](#examples)
-  - [Simple torus geometry](#simple-torus-geometry)
+- [Usage](#usage)
+  - [Geometry construction](#geometry-construction)
+  - [Examples](#examples)
+    - [Simple torus geometry](#simple-torus-geometry)
+  - [Logging](#logging)
 - [Comparison to other libraries](#comparison-to-other-libraries)
 
 # Installation
 
-Stellarmesh is not yet available on PyPi, for now install with:
+Stellarmesh is not yet available on PyPi (waiting for stable release of dependency build123d).
+
+For now install the latest release with:
+```sh
+pip install https://github.com/Thea-Energy/stellarmesh/releases/download/v0.1.1/stellarmesh-0.1.1-py3-none-any.whl
+```
+
+or install the development version with:
+
 ```sh
 pip install https://github.com/Thea-Energy/stellarmesh.git
 ```
 
-# Examples
+# Usage
+## Geometry construction
+Stellarmesh uses [build123d](https://github.com/gumyr/build123d) for geometry construction, a more pythonic fork of [cadquery](https://github.com/CadQuery/cadquery).
 
-For more examples see `examples.py`
+For build123d documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
 
-## Simple torus geometry
+## Examples
 
-<details>
-<summary>Module imports and configuration</summary>
+For more examples see the `examples` directory.
 
+### Simple torus geometry
 ```python
-%load_ext autoreload
-%autoreload 2
 import build123d as bd
 import stellarmesh as sm
-import logging
 
-# Required to show logging in Jupyter
-logging.basicConfig()
-logging.getLogger("stellarmesh").setLevel(logging.INFO)
-```
-
-</details>
-
-```python
 solids = [bd.Solid.make_torus(1000, 100)]
-for i in range(3):
+for _ in range(3):
     solids.append(solids[-1].faces()[0].thicken(100))
 solids = solids[1:]
 
 geometry = sm.Geometry(solids, material_names=["a", "a", "c"])
 mesh = sm.Mesh.mesh_geometry(geometry, min_mesh_size=50, max_mesh_size=50)
 mesh.write("test.msh")
-mesh.render("doc/torus-mesh.png", rotation_xyz=(90, 0, -90), normals=15)
+mesh.render("doc/torus-mesh-reversed.png", rotation_xyz=(90, 0, -90), normals=15)
 
 h5m = sm.MOABModel.make_from_mesh(mesh)
 h5m.write("dagmc.h5m")
@@ -119,6 +121,15 @@ leaky volume ids=
 
 </details>
 
+## Logging
+Stellarmesh uses the logging library for debug, info and warning messages. Set the level with:
+
+```python
+import logging
+
+logging.basicConfig() # Required in Jupyter to correctly set output stream
+logging.getLogger("stellarmesh").setLevel(logging.INFO)
+```
 
 # Comparison to other libraries
 
