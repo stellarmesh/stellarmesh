@@ -10,6 +10,7 @@ dependencies = [
     "gmsh",
     "numpy",
     "pymoab",
+    "pymmg",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,6 @@ select = [
     "N",
     "A",
     "B",
-    "S",
     "F",
     "D",
     "FBT",

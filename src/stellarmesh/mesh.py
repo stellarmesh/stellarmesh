@@ -6,7 +6,10 @@ author: Alex Koen
 desc: Mesh class wraps Gmsh functionality for geometry meshing.
 """
 import logging
+import subprocess
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Optional
 
 import gmsh
@@ -156,3 +159,142 @@ class Mesh:
             finally:
                 gmsh.fltk.finalize()
             return output_filename
+
+    @staticmethod
+    def _check_is_initialized():
+        if not gmsh.is_initialized():
+            raise RuntimeError("Gmsh not initialized.")
+
+    @contextmanager
+    def _stash_physical_groups(self):
+        self._check_is_initialized()
+        physical_groups: dict[tuple[int, int], tuple[list[int], str]] = {}
+        dim_tags = gmsh.model.get_physical_groups()
+        for dim_tag in dim_tags:
+            tags = gmsh.model.get_entities_for_physical_group(*dim_tag)
+            name = gmsh.model.get_physical_name(*dim_tag)
+            physical_groups[dim_tag] = (tags, name)
+        gmsh.model.remove_physical_groups(dim_tags)
+        try:
+            yield
+        finally:
+            for physical_group in physical_groups.items():
+                dim, tag = physical_group[0]
+                tags, name = physical_group[1]
+                gmsh.model.add_physical_group(dim, tags, tag, name)
+
+    # TODO(akoen): support mmgs optim
+    def refine(
+        self,
+        min_mesh_size: float,
+        max_mesh_size: float,
+        hausdorff_value: float,
+        gradation_value: float = 1.3,
+    ) -> "Mesh":
+        """Refine mesh using mmgs.
+
+        See mmgs documentation:
+        https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution
+        for more info.
+
+        Args:
+            min_mesh_size: Min size of output mesh.
+            max_mesh_size: Max size of output mesh.
+            hausdorff_value: Hausdorff value.
+            gradation_value: Gradation value. Defaults to 1.3.
+
+        Raises:
+            RuntimeError: _description_
+
+        Returns:
+            _description_
+        """
+        with self, self._stash_physical_groups():
+            surface_dimtags = gmsh.model.get_entities(2)
+            surface_tags = [v[1] for v in surface_dimtags]
+            for surface_tag in surface_tags:
+                # triangles = node_tags[0].reshape(-1, 3)
+                # sorted_triangles = np.sort(triangles, axis=1)
+                # edges = sorted_triangles[:, [0, 1, 1, 2, 0, 2]].reshape(-1, 2)
+                # unique_edges, counts = np.unique(edges, axis=0, return_counts=True)
+                # required_edges = unique_edges[counts == 1, :]
+                # print(len(required_edges))
+
+                gmsh.model.add_physical_group(2, [surface_tag])
+                edge_tags = gmsh.model.get_adjacencies(2, surface_tag)[1]
+                gmsh.model.add_physical_group(1, edge_tags)
+
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    filename = f"{tmp_dir}/surface_{surface_tag}.mesh"
+                    print(filename)
+                    gmsh.write(filename)
+                    with open(filename, "r+") as f:
+                        lines = f.readlines()
+
+                        num_edges = 0
+                        for i, line in enumerate(lines):
+                            if line.strip() == "Edges":
+                                num_edges = int(lines[i + 1])
+
+                        if num_edges < 1:
+                            raise RuntimeError("No Edges.")
+
+                        new_lines = (
+                            "RequiredEdges\n"
+                            + str(num_edges)
+                            + "\n"
+                            + "\n".join([str(i + 1) for i in range(num_edges)])
+                            + "\n"
+                        )
+
+                        lines.insert(-1, new_lines)
+                        f.seek(0)
+                        f.writelines(lines)
+
+                    refined_filename = str(
+                        Path(filename).with_suffix(".o.mesh").resolve()
+                    )
+                    result = subprocess.run(
+                        [
+                            "mmgs",
+                            "-hmin",
+                            str(min_mesh_size),
+                            "-hmax",
+                            str(max_mesh_size),
+                            "-hausd",
+                            str(hausdorff_value),
+                            "-hgrad",
+                            str(gradation_value),
+                            "-in",
+                            filename,
+                            "-out",
+                            refined_filename,
+                        ],
+                        check=False,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                    )
+                    print(result.stdout)
+
+                    print(refined_filename)
+                    gmsh.model.mesh.clear([(2, surface_tag)])
+                    # # gmsh.model.mesh.clear([])
+                    gmsh.merge(refined_filename)
+                    print(surface_tag)
+                    gmsh.model.remove_physical_groups([])
+                    # gmsh.model.remove_entities([(2, surface_tag)])
+
+                # Remove all physical groups
+
+                # node_tags, _, _ = gmsh.model.mesh.get_edges()
+                # meshutils.write_dotmesh()
+                #     gmsh.model.mesh.set_compound()
+                #     gmsh.merge()
+                ...
+                # gmsh.model.reparametrize_on_surface()
+
+            new_filename = Path(self._mesh_filename).with_suffix(".refined.msh").name
+            gmsh.option.set_number("Mesh.SaveAll", 1)
+            gmsh.write(new_filename)
+            return type(self)(new_filename)
