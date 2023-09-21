@@ -214,13 +214,6 @@ class Mesh:
                 surface_dimtags = gmsh.model.get_entities(2)
                 surface_tags = [v[1] for v in surface_dimtags]
                 for surface_tag in surface_tags:
-                    # triangles = node_tags[0].reshape(-1, 3)
-                    # sorted_triangles = np.sort(triangles, axis=1)
-                    # edges = sorted_triangles[:, [0, 1, 1, 2, 0, 2]].reshape(-1, 2)
-                    # unique_edges, counts = np.unique(edges, axis=0, return_counts=True)
-                    # required_edges = unique_edges[counts == 1, :]
-                    # print(len(required_edges))
-
                     gmsh.model.add_physical_group(2, [surface_tag])
                     edge_tags = gmsh.model.get_adjacencies(2, surface_tag)[1]
                     gmsh.model.add_physical_group(1, edge_tags)
@@ -280,20 +273,9 @@ class Mesh:
 
                         print(refined_filename)
                         gmsh.model.mesh.clear([(2, surface_tag)])
-                        # # gmsh.model.mesh.clear([])
                         gmsh.merge(refined_filename)
-                        print(surface_tag)
                         gmsh.model.remove_physical_groups([])
-                        # gmsh.model.remove_entities([(2, surface_tag)])
-
-                    # Remove all physical groups
-
-                    # node_tags, _, _ = gmsh.model.mesh.get_edges()
-                    # meshutils.write_dotmesh()
-                    #     gmsh.model.mesh.set_compound()
-                    #     gmsh.merge()
-                    ...
-                    # gmsh.model.reparametrize_on_surface()
+                        print(surface_tag)
 
             new_filename = Path(self._mesh_filename).with_suffix(".refined.msh").name
             gmsh.option.set_number("Mesh.SaveAll", 1)
