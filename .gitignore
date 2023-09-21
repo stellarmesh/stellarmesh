@@ -6,6 +6,8 @@
 *.h5m
 *.msh
 *.vtk
+*.mesh
+*.sol
 build/
 dist/
 README_files/
