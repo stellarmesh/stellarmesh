@@ -223,91 +223,35 @@ class Mesh:
         """
         with self:
             with self._stash_physical_groups():
-                surface_dimtags = gmsh.model.get_entities(2)
-                surface_tags = [v[1] for v in surface_dimtags]
-                known_edges = set()
-                for surface_tag in surface_tags:
-                    gmsh.model.add_physical_group(2, [surface_tag])
-                    edge_tags = set(gmsh.model.get_adjacencies(2, surface_tag)[1])
-                    gmsh.model.add_physical_group(1, list(edge_tags))
-                    required_edges = edge_tags & known_edges
-                    known_edges.update(edge_tags)
+                filename = "gmsh.mesh"
+                gmsh.write(filename)
 
-                    # TODO(akoen): restore temporarydirectory
-                    # with tempfile.TemporaryDirectory(delete=False) as tmp_dir:
-                    tmp_dir = tempfile.mkdtemp()
-                    if True:
-                        filename = f"{tmp_dir}/surface_{surface_tag}.mesh"
-                        print(filename)
-                        gmsh.write(filename)
-                        with open(filename, "r+") as f:
-                            lines = f.readlines()
+                refined_filename = str(Path(filename).with_suffix(".o.mesh").resolve())
+                # TODO(akoen): logging for subprocess
+                result = subprocess.run(
+                    [
+                        "mmgs",
+                        "-hmin",
+                        str(min_mesh_size),
+                        "-hmax",
+                        str(max_mesh_size),
+                        "-hausd",
+                        str(hausdorff_value),
+                        "-hgrad",
+                        str(gradation_value),
+                        "-in",
+                        filename,
+                        "-out",
+                        refined_filename,
+                    ],
+                    check=False,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
 
-                            edge_start = len(lines) + 1
-                            required_edge_indices = []
-                            for i, line in enumerate(lines):
-                                if line.strip() == "Edges":
-                                    edge_start = i + 2
-                                    continue
-
-                                sp = line.split()
-                                if i >= edge_start and len(sp) != 3:
-                                    # No longer in edges
-                                    break
-
-                                if i >= edge_start:
-                                    edge_tag = int(sp[-1])
-                                    if edge_tag in required_edges:
-                                        required_edge_indices.append(
-                                            str(i - edge_start + 1)
-                                        )
-
-                            if (num_required_edges := len(required_edge_indices)) > 0:
-                                lines.insert(
-                                    -1,
-                                    "RequiredEdges\n"
-                                    + str(num_required_edges)
-                                    + "\n"
-                                    + "\n".join(required_edge_indices)
-                                    + "\n",
-                                )
-                                f.seek(0)
-                                f.writelines(lines)
-
-                        refined_filename = str(
-                            Path(filename).with_suffix(".o.mesh").resolve()
-                        )
-                        result = subprocess.run(
-                            [
-                                "mmgs",
-                                "-hmin",
-                                str(min_mesh_size),
-                                "-hmax",
-                                str(max_mesh_size),
-                                "-hausd",
-                                str(hausdorff_value),
-                                "-hgrad",
-                                str(gradation_value),
-                                "-in",
-                                filename,
-                                "-out",
-                                refined_filename,
-                            ],
-                            check=False,
-                            text=True,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                        )
-                        # TODO(akoen): Add print
-                        # print(result.stdout)
-
-                        print(refined_filename)
-                        gmsh.model.mesh.clear([(2, surface_tag)])
-                        gmsh.model.mesh.clear([(1, tag) for tag in edge_tags])
-                        gmsh.merge(refined_filename)
-                        gmsh.model.remove_physical_groups([])
-                        print(surface_tag)
-                ...
+                gmsh.model.mesh.clear()
+                gmsh.merge(refined_filename)
 
             new_filename = Path(self._mesh_filename).with_suffix(".refined.msh").name
             gmsh.option.set_number("Mesh.SaveAll", 1)
