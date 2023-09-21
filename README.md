@@ -10,8 +10,9 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 
 - [x] Correct implementation of surface-sense
 - [x] Imprinting and merging of conformal geometry
+- [x] Mesh refinement
 - [ ] Programatic manipulation of .h5m tags e.g. materials
-- [ ] Mesh refinement
+
 
 # Contents
 - [Contents](#contents)
@@ -131,6 +132,31 @@ logging.basicConfig() # Required in Jupyter to correctly set output stream
 logging.getLogger("stellarmesh").setLevel(logging.INFO)
 ```
 
+## Mesh refinement
+*Note: given CAD geometry, Gmsh often produces high-quality meshes that do not benefit from remeshing.*
+
+Stellarmesh supports mesh refinement using the [mmg](https://www.mmgtools.org/) library. Refine a mesh with:
+
+```python
+refined_mesh = mesh.refine(
+    min_mesh_size: float,
+    max_mesh_size: float,
+    hausdorff_value: float,
+    gradation_value: float = 1.3,
+)
+```
+and consult the [mmgs documentation](https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution) for paramter values.
+
+<p align="center">
+    <img width="40%" src="https://github.com/Thea-Energy/stellarmesh/assets/43913902/f3440b6b-3e11-476a-9fae-ab9708f8f2b2"/>
+  <br>
+  <img width="40%" src="https://github.com/Thea-Energy/stellarmesh/assets/43913902/29acbdb3-24a2-419d-9f3f-237aec475369" />
+  <br>
+  <em>The refined mesh has more triangles in regions with high curvature thanks to the <a href="https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-options/mmg-remesher-option-hausd">hausdorff parameter</a>.</em>
+</p>
+
+Many thanks to [Erik B. Knudsen](https://github.com/ebknudsen) for his work on remeshing for [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC).
+
 # Comparison to other libraries
 
 || Stellarmesh | [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc) |  [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC) | Cubit |
@@ -140,7 +166,7 @@ logging.getLogger("stellarmesh").setLevel(logging.INFO)
 | In development | ✓ | ✓ | ✓ | ✓ |
 | Open-source | ✓ | ✓ | ✓ |   |
 | Surface-sense handling | ✓ |   | <sup>1</sup> | ✓ |
-| Mesh refinement |  |   | ✓ | ✓ |
+| Mesh refinement | ✓ |   | ✓ | ✓ |
 | Manipulation of .h5m files | <sup>2</sup> |   | | |
 
 <em>Note: Please file an issue if this table is out-of-date.</em>
