@@ -175,20 +175,15 @@ class Mesh:
             name = gmsh.model.get_physical_name(*dim_tag)
             physical_groups[dim_tag] = (tags, name)
         gmsh.model.remove_physical_groups(dim_tags)
-        internal_error = False
+
         try:
-            try:
-                yield
-            except:
-                internal_error = True
-                raise
-        finally:
-            # TODO(akoen): Properly handle errors in try block
-            if internal_error:
-                raise
+            yield
+        except Exception as e:
+            raise RuntimeError("Cannot unstash physical groups due to error.") from e
+        else:
             if len(gmsh.model.get_physical_groups()) > 0:
                 raise RuntimeError(
-                    "Existing physical groups on stash restore, not overwriting."
+                    "Not overwriting existing physical groups on stash restore."
                 )
             for physical_group in physical_groups.items():
                 dim, tag = physical_group[0]
