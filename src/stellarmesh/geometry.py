@@ -5,12 +5,13 @@ author: Alex Koen
 
 desc: Geometry class represents a CAD geometry to be meshed.
 """
+import logging
 from typing import Sequence
 
 import build123d as bd
 from OCP.BOPAlgo import BOPAlgo_MakeConnected
 
-from ._core import logger
+logger = logging.getLogger(__name__)
 
 
 class Geometry:

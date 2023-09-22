@@ -14,8 +14,9 @@ from typing import Optional
 
 import gmsh
 
-from ._core import logger
 from .geometry import Geometry
+
+logger = logging.getLogger(__name__)
 
 
 class Mesh:
@@ -44,7 +45,7 @@ class Mesh:
         if not gmsh.is_initialized():
             gmsh.initialize()
 
-        gmsh.option.setNumber(
+        gmsh.option.set_number(
             "General.Terminal",
             1 if logger.getEffectiveLevel() <= logging.INFO else 0,
         )
@@ -260,6 +261,9 @@ class Mesh:
             # TODO(akoen): log subprocess realtime
             # https://github.com/Thea-Energy/stellarmesh/issues/13
             try:
+                logger.info(
+                    f"Refining mesh {filename} with mmgs, output to {refined_filename}."
+                )
                 output = subprocess.run(
                     command,
                     text=True,
@@ -272,9 +276,11 @@ class Mesh:
                     logger.info(output.stdout)
 
             except subprocess.CalledProcessError as e:
-                logger.error("Command failed with error code %d", e.returncode)
-                # We've piped stderr to stdout
-                logger.error("STDERR:\n%s", e.stdout)
+                logger.exception(
+                    "Command failed with error code %d\nSTDERR:%s",
+                    e.returncode,
+                    e.stdout,
+                )
                 raise RuntimeError("Command failed to run. See output above.") from e
 
             gmsh.model.mesh.clear()
