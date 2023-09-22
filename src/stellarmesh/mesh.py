@@ -195,13 +195,15 @@ class Mesh:
                 tags, name = physical_group[1]
                 gmsh.model.add_physical_group(dim, tags, tag, name)
 
-    # TODO(akoen): support mmgs optim
-    def refine(
+    def refine(  # noqa: PLR0913
         self,
-        min_mesh_size: float,
-        max_mesh_size: float,
-        hausdorff_value: float,
+        *,
+        min_mesh_size: Optional[float] = None,
+        max_mesh_size: Optional[float] = None,
+        const_mesh_size: Optional[float] = None,
+        hausdorff_value: float = 0.01,
         gradation_value: float = 1.3,
+        optim: bool = False,
     ) -> "Mesh":
         """Refine mesh using mmgs.
 
@@ -209,46 +211,77 @@ class Mesh:
         https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution
         for more info.
 
+        Pay particular attention to the hausdorff value, which overrides most of the
+        other options and is typically set too low. Set to a large value, on the order
+        of the size of your bounding box, to disable completely.
+
         Args:
-            min_mesh_size: Min size of output mesh.
-            max_mesh_size: Max size of output mesh.
-            hausdorff_value: Hausdorff value.
-            gradation_value: Gradation value. Defaults to 1.3.
+            min_mesh_size: -hmin: Min size of output mesh elements. Defaults to None.
+            max_mesh_size: -hmax: Max size of output mesh elements. Defaults to None.
+            const_mesh_size: -hsize: Constant size map
+            hausdorff_value: -hausd: Hausdorff value. Defaults to 0.01, which is
+            suitable for a circle of radius 1. Set to a large value to disable effect.
+            gradation_value: -hgrad Gradation value. Defaults to 1.3.
+            optim: -optim Do not change elements sizes. Defaults to False.
 
         Raises:
-            RuntimeError: _description_
+            RuntimeError: If refinement fails.
 
         Returns:
-            _description_
+            New refined mesh.
         """
         with self:
-            with self._stash_physical_groups():
-                filename = "gmsh.mesh"
+            with self._stash_physical_groups(), tempfile.TemporaryDirectory() as tmpdir:
+                filename = f"{tmpdir}/model.mesh"
                 gmsh.write(filename)
 
                 refined_filename = str(Path(filename).with_suffix(".o.mesh").resolve())
-                # TODO(akoen): logging for subprocess
-                result = subprocess.run(
+                command = ["mmgs"]
+
+                params = {
+                    "-hmin": min_mesh_size,
+                    "-hmax": max_mesh_size,
+                    "-hsiz": const_mesh_size,
+                    "-hausd": hausdorff_value,
+                    "-hgrad": gradation_value,
+                }
+
+                for param in params.items():
+                    if param[1]:
+                        command.extend([param[0], str(param[1])])
+                if optim:
+                    command.append("-optim")
+
+                command.extend(
                     [
-                        "mmgs",
-                        "-hmin",
-                        str(min_mesh_size),
-                        "-hmax",
-                        str(max_mesh_size),
-                        "-hausd",
-                        str(hausdorff_value),
-                        "-hgrad",
-                        str(gradation_value),
                         "-in",
                         filename,
                         "-out",
                         refined_filename,
-                    ],
-                    check=False,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
+                    ]
                 )
+
+                # TODO(akoen): log subprocess realtime
+                # https://github.com/Thea-Energy/stellarmesh/issues/13
+                try:
+                    output = subprocess.run(
+                        command,
+                        text=True,
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                    )
+
+                    if output.stdout:
+                        logger.info(output.stdout)
+
+                except subprocess.CalledProcessError as e:
+                    logger.error("Command failed with error code %d", e.returncode)
+                    # We've piped stderr to stdout
+                    logger.error("STDERR:\n%s", e.stdout)
+                    raise RuntimeError(
+                        "Command failed to run. See output above."
+                    ) from e
 
                 gmsh.model.mesh.clear()
                 gmsh.merge(refined_filename)
