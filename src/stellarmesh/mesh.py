@@ -225,65 +225,64 @@ class Mesh:
         Returns:
             New refined mesh with filename <original-filename>.refined.msh.
         """
-        with self:
-            with self._stash_physical_groups(), tempfile.TemporaryDirectory() as tmpdir:
-                filename = f"{tmpdir}/model.mesh"
-                gmsh.write(filename)
+        with (
+            self
+        ), self._stash_physical_groups(), tempfile.TemporaryDirectory() as tmpdir:
+            filename = f"{tmpdir}/model.mesh"
+            gmsh.write(filename)
 
-                refined_filename = str(Path(filename).with_suffix(".o.mesh").resolve())
-                command = ["mmgs"]
+            refined_filename = str(Path(filename).with_suffix(".o.mesh").resolve())
+            command = ["mmgs"]
 
-                params = {
-                    "-hmin": min_mesh_size,
-                    "-hmax": max_mesh_size,
-                    "-hsiz": const_mesh_size,
-                    "-hausd": hausdorff_value,
-                    "-hgrad": gradation_value,
-                }
+            params = {
+                "-hmin": min_mesh_size,
+                "-hmax": max_mesh_size,
+                "-hsiz": const_mesh_size,
+                "-hausd": hausdorff_value,
+                "-hgrad": gradation_value,
+            }
 
-                for param in params.items():
-                    if param[1]:
-                        command.extend([param[0], str(param[1])])
-                if optim:
-                    command.append("-optim")
+            for param in params.items():
+                if param[1]:
+                    command.extend([param[0], str(param[1])])
+            if optim:
+                command.append("-optim")
 
-                command.extend(
-                    [
-                        "-in",
-                        filename,
-                        "-out",
-                        refined_filename,
-                    ]
+            command.extend(
+                [
+                    "-in",
+                    filename,
+                    "-out",
+                    refined_filename,
+                ]
+            )
+
+            # TODO(akoen): log subprocess realtime
+            # https://github.com/Thea-Energy/stellarmesh/issues/13
+            try:
+                output = subprocess.run(
+                    command,
+                    text=True,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                 )
 
-                # TODO(akoen): log subprocess realtime
-                # https://github.com/Thea-Energy/stellarmesh/issues/13
-                try:
-                    output = subprocess.run(
-                        command,
-                        text=True,
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                    )
+                if output.stdout:
+                    logger.info(output.stdout)
 
-                    if output.stdout:
-                        logger.info(output.stdout)
+            except subprocess.CalledProcessError as e:
+                logger.error("Command failed with error code %d", e.returncode)
+                # We've piped stderr to stdout
+                logger.error("STDERR:\n%s", e.stdout)
+                raise RuntimeError("Command failed to run. See output above.") from e
 
-                except subprocess.CalledProcessError as e:
-                    logger.error("Command failed with error code %d", e.returncode)
-                    # We've piped stderr to stdout
-                    logger.error("STDERR:\n%s", e.stdout)
-                    raise RuntimeError(
-                        "Command failed to run. See output above."
-                    ) from e
+            gmsh.model.mesh.clear()
+            gmsh.merge(refined_filename)
 
-                gmsh.model.mesh.clear()
-                gmsh.merge(refined_filename)
-
-                new_filename = str(
-                    Path(self._mesh_filename).with_suffix(".refined.msh").resolve()
-                )
-                gmsh.option.set_number("Mesh.SaveAll", 1)
-                gmsh.write(new_filename)
-                return type(self)(new_filename)
+            new_filename = str(
+                Path(self._mesh_filename).with_suffix(".refined.msh").resolve()
+            )
+            gmsh.option.set_number("Mesh.SaveAll", 1)
+            gmsh.write(new_filename)
+            return type(self)(new_filename)
