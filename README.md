@@ -42,6 +42,8 @@ or install the development version with:
 pip install https://github.com/Thea-Energy/stellarmesh.git
 ```
 
+*Note: Stellarmesh requires an installation of [MOAB](https://bitbucket.org/fathomteam/moab) with pymoab, which is not available on PyPi and must be installed either from source or using Conda.*
+
 # Usage
 ## Geometry construction
 Stellarmesh uses [build123d](https://github.com/gumyr/build123d) for geometry construction, a more pythonic fork of [cadquery](https://github.com/CadQuery/cadquery).
