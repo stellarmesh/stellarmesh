@@ -223,7 +223,7 @@ class Mesh:
             RuntimeError: If refinement fails.
 
         Returns:
-            New refined mesh.
+            New refined mesh with filename <original-filename>.refined.msh.
         """
         with self:
             with self._stash_physical_groups(), tempfile.TemporaryDirectory() as tmpdir:
@@ -281,7 +281,9 @@ class Mesh:
                 gmsh.model.mesh.clear()
                 gmsh.merge(refined_filename)
 
-            new_filename = Path(self._mesh_filename).with_suffix(".refined.msh").name
-            gmsh.option.set_number("Mesh.SaveAll", 1)
-            gmsh.write(new_filename)
-            return type(self)(new_filename)
+                new_filename = str(
+                    Path(self._mesh_filename).with_suffix(".refined.msh").resolve()
+                )
+                gmsh.option.set_number("Mesh.SaveAll", 1)
+                gmsh.write(new_filename)
+                return type(self)(new_filename)

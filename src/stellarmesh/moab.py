@@ -122,7 +122,7 @@ class MOABModel:
             "make_watertight".
         """
         subprocess.run(
-            [binary_path, input_filename, "-o", output_filename],  # noqa
+            [binary_path, input_filename, "-o", output_filename],
             check=True,
         )
 

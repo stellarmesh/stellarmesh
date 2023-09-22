@@ -4,6 +4,8 @@
 
 :warning: This library is in development. Expect breaking changes and bugs, and feel welcome to contribute.
 
+:warning: See [logging](#logging) to enable logging output when using Jupyter.
+
 Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC). The goal is to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin) to enable a fully-featured and open-source workflow.
 
 **Progress**:
@@ -22,6 +24,7 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
   - [Examples](#examples)
     - [Simple torus geometry](#simple-torus-geometry)
   - [Logging](#logging)
+  - [Mesh refinement](#mesh-refinement)
 - [Comparison to other libraries](#comparison-to-other-libraries)
 
 # Installation
@@ -139,13 +142,10 @@ Stellarmesh supports mesh refinement using the [mmg](https://www.mmgtools.org/) 
 
 ```python
 refined_mesh = mesh.refine(
-    min_mesh_size: float,
-    max_mesh_size: float,
-    hausdorff_value: float,
-    gradation_value: float = 1.3,
+  ...
 )
 ```
-and consult the [mmgs documentation](https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution) for paramter values.
+and consult the `Mesh.refine` and [mmgs](https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution) documentations for paramter values.
 
 <p align="center">
     <img width="40%" src="https://github.com/Thea-Energy/stellarmesh/assets/43913902/f3440b6b-3e11-476a-9fae-ab9708f8f2b2"/>
