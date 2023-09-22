@@ -1,6 +1,6 @@
 [project]
 name = "stellarmesh"
-version = "0.1.0"
+version = "0.2.0"
 authors = [{ name = "Alex Keon" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"

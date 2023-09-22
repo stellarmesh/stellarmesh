@@ -33,7 +33,7 @@ Stellarmesh is not yet available on PyPi (waiting for stable release of dependen
 
 For now install the latest release with:
 ```sh
-pip install https://github.com/Thea-Energy/stellarmesh/releases/download/v0.1.1/stellarmesh-0.1.1-py3-none-any.whl
+pip install https://github.com/Thea-Energy/stellarmesh/releases/download/v0.2.0/stellarmesh-0.2.0-py3-none-any.whl
 ```
 
 or install the development version with:
