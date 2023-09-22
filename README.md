@@ -145,7 +145,7 @@ refined_mesh = mesh.refine(
   ...
 )
 ```
-and consult the `Mesh.refine` and [mmgs](https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution) documentations for paramter values.
+and consult the `Mesh.refine` and [mmgs](https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution) documentations for parameter values.
 
 <p align="center">
     <img width="40%" src="https://github.com/Thea-Energy/stellarmesh/assets/43913902/f3440b6b-3e11-476a-9fae-ab9708f8f2b2"/>
