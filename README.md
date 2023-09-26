@@ -167,7 +167,7 @@ Many thanks to [Erik B. Knudsen](https://github.com/ebknudsen) for his work on r
 | Meshing backend | Gmsh | Gmsh | Gmsh/CQ |  Cubit |
 | In development | ✓ | ✓ | ✓ | ✓ |
 | Open-source | ✓ | ✓ | ✓ |   |
-| Surface-sense handling | ✓ |   | <sup>1</sup> | ✓ |
+| Surface-sense handling | ✓ | ✓ | <sup>1</sup> | ✓ |
 | Mesh refinement | ✓ |   | ✓ | ✓ |
 | Manipulation of .h5m files | <sup>2</sup> |   | | |
 
