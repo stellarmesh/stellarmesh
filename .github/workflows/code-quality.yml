@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -32,4 +32,4 @@ jobs:
         run: black --diff --color .
 
       - name: Run static analysis with Ruff
-        run: ruff check --extend-exclude tests .
+        run: ruff check --format=github --extend-exclude tests .
