@@ -12,7 +12,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: mambaorg/micromamba:latest
+      image: mambaorg/micromamba:bookworm-slim
       options: --user=root
     strategy:
       matrix:
@@ -22,7 +22,7 @@ jobs:
       - name: Install system packages
         run: |
           apt update
-          apt install -y git
+          apt install -y git libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
 
       - name: Checkout code
         uses: actions/checkout@v4
