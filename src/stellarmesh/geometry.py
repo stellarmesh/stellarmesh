@@ -34,7 +34,8 @@ class Geometry:
         """Construct geometry from solids.
 
         Args:
-            solids: Solids.
+            solids: List of solids, where each solid is a build123d Solid, cadquery
+            Solid, or OCP TopoDS_Solid.
             material_names: List of materials. Must match length of solids.
         """
         logger.info(f"Importing {len(solids)} solids to geometry")
