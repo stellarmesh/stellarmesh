@@ -5,17 +5,10 @@ authors = [{ name = "Alex Keon" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "build123d @ git+https://github.com/gumyr/build123d",
-    "gmsh",
-    "numpy",
-    "pymoab",
-    "pymmg",
-]
+dependencies = ["gmsh", "numpy", "pymoab", "pymmg"]
 
 [project.optional-dependencies]
 dev = ["black", "pre-commit", "ruff", "ocp_vscode"]
-test = ["pytest"]
 
 [build-system]
 requires = ["setuptools"]
