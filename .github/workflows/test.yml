@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up conda dependencies
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           micromamba install -c conda-forge python=${{ matrix.python-version }} moab
 
