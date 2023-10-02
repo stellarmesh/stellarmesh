@@ -6,10 +6,16 @@ author: Alex Koen
 desc: Geometry class represents a CAD geometry to be meshed.
 """
 import logging
-from typing import Sequence
+from typing import Sequence, Union
 
-import build123d as bd
 from OCP.BOPAlgo import BOPAlgo_MakeConnected
+from OCP.BRep import BRep_Builder
+from OCP.BRepTools import BRepTools
+from OCP.IFSelect import IFSelect_RetDone
+from OCP.STEPControl import STEPControl_Reader
+from OCP.TopAbs import TopAbs_ShapeEnum
+from OCP.TopExp import TopExp_Explorer
+from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +23,14 @@ logger = logging.getLogger(__name__)
 class Geometry:
     """Geometry, representing an ordered list of solids, to be meshed."""
 
-    solids: Sequence[bd.Solid]
+    solids: Sequence[TopoDS_Solid]
     material_names: Sequence[str]
 
-    def __init__(self, solids: Sequence[bd.Solid], material_names: Sequence[str]):
+    def __init__(
+        self,
+        solids: Sequence[Union["bd.Solid", "cq.Solid", TopoDS_Solid]],
+        material_names: Sequence[str],
+    ):
         """Construct geometry from solids.
 
         Args:
@@ -29,9 +39,36 @@ class Geometry:
         """
         logger.info(f"Importing {len(solids)} solids to geometry")
         if len(material_names) != len(solids):
-            raise ValueError("Length of material_names must match length of solids.")
-        self.solids = solids
+            raise ValueError(
+                f"Number of material names ({len(material_names)}) must match length of solids ({len(solids)})."
+            )
+
+        self.solids = []
+        for i, s in enumerate(solids):
+            if isinstance(s, TopoDS_Solid):
+                self.solids.append(s)
+            elif hasattr(s, "wrapped"):
+                self.solids.append(s.wrapped)
+            else:
+                raise ValueError(
+                    f"Solid {i} is of type {type(s).__name__}, not a cadquery Solid, build123d Solid, or TopoDS_Solid"
+                )
+
         self.material_names = material_names
+
+    @staticmethod
+    def _solids_from_shape(shape: TopoDS_Shape) -> list[TopoDS_Solid]:
+        """Return all the solids in this shape."""
+        solids = []
+        if shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_SOLID:
+            solids.append(TopoDS.Solid_s(shape))
+        if shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:
+            explorer = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_SOLID)
+            while explorer.More():
+                assert explorer.Current().ShapeType() == TopAbs_ShapeEnum.TopAbs_SOLID
+                solids.append(TopoDS.Solid_s(explorer.Current()))
+                explorer.Next()
+        return solids
 
     # TODO(akoen): import_step and import_brep are not DRY
     # https://github.com/Thea-Energy/stellarmesh/issues/2
@@ -39,7 +76,7 @@ class Geometry:
     def import_step(
         cls,
         filename: str,
-        material_names: str,
+        material_names: Sequence[str],
     ) -> "Geometry":
         """Import model from a step file.
 
@@ -50,20 +87,27 @@ class Geometry:
         Returns:
             Model.
         """
-        geometry = bd.import_step(filename)
-        solids = geometry.solids()
-        if len(material_names) != len(solids):
-            raise ValueError(
-                "Length of material_names must match number of solids in file."
-            )
-        logger.info(f"Importing {len(solids)} from {filename}")
+        logger.info(f"Importing {filename}")
+
+        reader = STEPControl_Reader()
+        read_status = reader.ReadFile(filename)
+        if read_status != IFSelect_RetDone:
+            raise ValueError(f"STEP File {filename} could not be loaded")
+        for i in range(reader.NbRootsForTransfer()):
+            reader.TransferRoot(i + 1)
+
+        solids = []
+        for i in range(reader.NbShapes()):
+            shape = reader.Shape(i + 1)
+            solids.extend(cls._solids_from_shape(shape))
+
         return cls(solids, material_names)
 
     @classmethod
     def import_brep(
         cls,
         filename: str,
-        material_names: str,
+        material_names: Sequence[str],
     ) -> "Geometry":
         """Import model from a brep (cadquery, build123d native) file.
 
@@ -74,12 +118,16 @@ class Geometry:
         Returns:
             Model.
         """
-        geometry = bd.import_brep(filename)
-        solids = geometry.solids()
-        if len(material_names) != len(solids):
-            raise ValueError(
-                "Length of material_names must match number of solids in file."
-            )
+        logger.info(f"Importing {filename}")
+
+        shape = TopoDS_Shape()
+        builder = BRep_Builder()
+        BRepTools.Read_s(shape, filename, builder)
+
+        if shape.IsNull():
+            raise ValueError(f"Could not import {filename}")
+        solids = cls._solids_from_shape(shape)
+
         logger.info(f"Importing {len(solids)} from {filename}")
         return cls(solids, material_names)
 
@@ -93,23 +141,16 @@ class Geometry:
         bldr.SetRunParallel(theFlag=True)
         bldr.SetUseOBB(theUseOBB=True)
 
-        for new_solid in self.solids:
-            if new_solid.wrapped is not None:
-                bldr.AddArgument(new_solid.wrapped)
+        for solid in self.solids:
+            bldr.AddArgument(solid)
 
         bldr.Perform()
-        res = bd.Shape(bldr.Shape())
-        new_solids = res.solids()
+        res = bldr.Shape()
+        res_solids = self._solids_from_shape(res)
 
-        # Track bd attributes (material, name, label) across imprinting
-        old_wrapped = [n.wrapped for n in self.solids]
-        for new_solid in new_solids:
-            old_matching = bldr.GetOrigins(new_solid.wrapped)
-            if (matching_len := old_matching.Size()) != 1:
-                raise RuntimeError(f"New solid derives from {matching_len} solids")
-            matching = [o.IsSame(old_matching.First()) for o in old_wrapped if o]
-            i = matching.index(True)
-            for attr in ["label", "material", "color"]:
-                new_solid.__setattr__(attr, self.solids[i].__getattribute__(attr))
+        if (l0 := len(res_solids)) != (l1 := len(self.solids)):
+            raise RuntimeError(
+                f"Length of imprinted solids {l0} != length of original solids {l1}"
+            )
 
-        return type(self)(new_solids, self.material_names)
+        return type(self)(res_solids, self.material_names)

@@ -1,0 +1,5 @@
+# Use requirements.txt as PyPi will not accept a git dependency
+.
+pytest
+buld123d @ git+https://github.com/gumyr/build123d
+cadquery

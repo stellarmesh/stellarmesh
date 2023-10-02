@@ -97,9 +97,7 @@ class Mesh:
 
             material_solid_map = {}
             for s, m in zip(geometry.solids, geometry.material_names):
-                dim_tags = gmsh.model.occ.import_shapes_native_pointer(
-                    s.wrapped._address()
-                )
+                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
