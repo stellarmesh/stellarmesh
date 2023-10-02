@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black", "pre-commit", "ruff", "ocp_vscode"]
+dev = ["black", "pre-commit", "ruff", "ocp_vscode", "pytest"]
 
 [build-system]
 requires = ["setuptools"]
