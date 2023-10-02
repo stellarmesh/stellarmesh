@@ -28,7 +28,7 @@ class Geometry:
 
     def __init__(
         self,
-        solids: Sequence[Union["bd.Solid", "cq.Solid", TopoDS_Solid]],
+        solids: Sequence[Union["bd.Solid", "cq.Solid", TopoDS_Solid]],  # noqa: F821
         material_names: Sequence[str],
     ):
         """Construct geometry from solids.
@@ -40,7 +40,8 @@ class Geometry:
         logger.info(f"Importing {len(solids)} solids to geometry")
         if len(material_names) != len(solids):
             raise ValueError(
-                f"Number of material names ({len(material_names)}) must match length of solids ({len(solids)})."
+                f"Number of material names ({len(material_names)}) must match length of"
+                + " solids ({len(solids)})."
             )
 
         self.solids = []
@@ -51,7 +52,8 @@ class Geometry:
                 self.solids.append(s.wrapped)
             else:
                 raise ValueError(
-                    f"Solid {i} is of type {type(s).__name__}, not a cadquery Solid, build123d Solid, or TopoDS_Solid"
+                    f"Solid {i} is of type {type(s).__name__}, not a cadquery Solid, "
+                    + "build123d Solid, or TopoDS_Solid"
                 )
 
         self.material_names = material_names
