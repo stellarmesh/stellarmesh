@@ -21,6 +21,10 @@ jobs:
       SHELL: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
 
     steps:
+      - name: Install system packages
+        run: |
+          apt install -y git
+
       - name: Checkout code
         uses: actions/checkout@v4
 
