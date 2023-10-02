@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: mambaorg/micromamba:latest
+      options: --user=root
     strategy:
       matrix:
         python-version: [3.9]
@@ -23,7 +24,7 @@ jobs:
 
       - name: Set up conda dependencies
         run: |
-          micromamba install -c conda-forge python=3.9 moab
+          micromamba install -c conda-forge python=${{ matrix.python-version }} moab
 
       - name: Install dependencies
         run: |
