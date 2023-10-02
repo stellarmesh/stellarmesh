@@ -31,12 +31,8 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 - [Comparison to other libraries](#comparison-to-other-libraries)
 
 # Installation
-
-Stellarmesh is not yet available on PyPi (waiting for stable release of dependency build123d).
-
-For now install the latest release with:
 ```sh
-pip install https://github.com/Thea-Energy/stellarmesh/releases/download/v0.2.0/stellarmesh-0.2.0-py3-none-any.whl
+pip install stellarmesh
 ```
 
 or install the development version with:
@@ -51,7 +47,13 @@ pip install https://github.com/Thea-Energy/stellarmesh.git
 ## Geometry construction
 Stellarmesh supports both [build123d](https://github.com/gumyr/build123d) (recommended) and [CadQuery](https://github.com/CadQuery/cadquery) for geometry construction but does not depend on either.
 
-The included examples use build123d. For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
+The included examples use build123d. To install, run:
+
+```python
+pip install git+https://github.com/gumyr/build123d
+```
+
+For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
 
 ## Examples
 

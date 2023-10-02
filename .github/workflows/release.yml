@@ -30,7 +30,6 @@ jobs:
           path: dist/
 
   publish-to-pypi:
-    if: ${{ false }} # disable until stable release of build123d
     name: >-
       Publish to Pypi
     needs:
@@ -55,7 +54,7 @@ jobs:
     name: >-
       Sign distribution and upload to GitHub releases
     needs:
-      - build
+      - publish-to-pypi
     runs-on: ubuntu-latest
 
     permissions:

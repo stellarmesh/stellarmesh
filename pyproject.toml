@@ -1,14 +1,11 @@
 [project]
 name = "stellarmesh"
-version = "0.2.0"
+version = "0.3.0"
 authors = [{ name = "Alex Keon" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["gmsh", "numpy", "pymoab", "pymmg"]
-
-[project.optional-dependencies]
-dev = ["black", "pre-commit", "ruff", "ocp_vscode"]
 
 [build-system]
 requires = ["setuptools"]
