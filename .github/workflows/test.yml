@@ -19,10 +19,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      # Need conda for pymoab install
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@v2
         with:
           python-version: ${{ matrix.python-version }}
+          mamba-version: "*"
+          channels: conda-forge,defaults
+          channel-priority: true
+
+      - name: Set up conda dependencies
+        run: |
+          mamba install -y moab
 
       - name: Install dependencies
         run: |
