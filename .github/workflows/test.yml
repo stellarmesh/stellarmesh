@@ -28,9 +28,11 @@ jobs:
           micromamba install -c conda-forge python=${{ matrix.python-version }} moab
 
       - name: Install dependencies
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           python -m pip install ".[dev]"
 
       - name: Test with pytest
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           python -m pytest
