@@ -5,7 +5,7 @@ authors = [{ name = "Alex Keon" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["gmsh", "numpy", "pymoab", "pymmg"]
+dependencies = ["gmsh", "numpy", "pymoab", "pymmg", "cadquery-ocp"]
 
 [build-system]
 requires = ["setuptools"]
