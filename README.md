@@ -10,9 +10,11 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 
 **Progress**:
 
+- [x] Import of [CadQuery](https://github.com/CadQuery/cadquery), [build123d](https://github.com/gumyr/build123d), STEP and BREP geometry
 - [x] Correct implementation of surface-sense
 - [x] Imprinting and merging of conformal geometry
 - [x] Mesh refinement
+- [x] Automated testing and integration
 - [ ] Programatic manipulation of .h5m tags e.g. materials
 
 
@@ -23,6 +25,7 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
   - [Geometry construction](#geometry-construction)
   - [Examples](#examples)
     - [Simple torus geometry](#simple-torus-geometry)
+    - [Other](#other)
   - [Logging](#logging)
   - [Mesh refinement](#mesh-refinement)
 - [Comparison to other libraries](#comparison-to-other-libraries)
@@ -46,13 +49,11 @@ pip install https://github.com/Thea-Energy/stellarmesh.git
 
 # Usage
 ## Geometry construction
-Stellarmesh uses [build123d](https://github.com/gumyr/build123d) for geometry construction, a more pythonic fork of [cadquery](https://github.com/CadQuery/cadquery).
+Stellarmesh supports both [build123d](https://github.com/gumyr/build123d) (recommended) and [CadQuery](https://github.com/CadQuery/cadquery) for geometry construction but does not depend on either.
 
-For build123d documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
+The included examples use build123d. For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
 
 ## Examples
-
-For more examples see the `examples` directory.
 
 ### Simple torus geometry
 ```python
@@ -126,6 +127,11 @@ leaky volume ids=
 ```
 
 </details>
+
+### Other
+- [Mesh refinement](examples/mesh-refinement.py)
+- [Stellarmesh logo](examples/stellarmesh-logo.py)
+- [Imprinted boxes](examples/imprinted-boxes.py)
 
 ## Logging
 Stellarmesh uses the logging library for debug, info and warning messages. Set the level with:
