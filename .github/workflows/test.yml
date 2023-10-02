@@ -17,8 +17,6 @@ jobs:
     strategy:
       matrix:
         python-version: [3.9]
-    env:
-      SHELL: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
 
     steps:
       - name: Install system packages
@@ -29,16 +27,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up conda dependencies
-        shell: $SHELL
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           micromamba install -c conda-forge python=${{ matrix.python-version }} moab
 
       - name: Install dependencies
-        shell: $SHELL
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           python -m pip install ".[dev]"
 
       - name: Test with pytest
-        shell: $SHELL
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
           python -m pytest
