@@ -11,6 +11,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: mambaorg/micromamba:latest
     strategy:
       matrix:
         python-version: [3.9]
@@ -19,18 +21,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Need conda for pymoab install
-      - name: Set up conda
-        uses: conda-incubator/setup-miniconda@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-          mamba-version: "*"
-          channels: conda-forge,defaults
-          channel-priority: true
-
       - name: Set up conda dependencies
         run: |
-          mamba install -y moab
+          micromamba install -c conda-forge python=3.9 moab
 
       - name: Install dependencies
         run: |
