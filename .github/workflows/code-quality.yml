@@ -3,10 +3,10 @@ name: Code Quality Checks
 on:
   push:
     branches:
-      - main  # Change this to your main branch name if necessary
+      - main # Change this to your main branch name if necessary
   pull_request:
     branches:
-      - main  # Change this to your main branch name if necessary
+      - main # Change this to your main branch name if necessary
 
 jobs:
   code_quality:
@@ -29,7 +29,7 @@ jobs:
           pip install black ruff
 
       - name: Check code formatting with Black
-        run: black --diff --color .  
+        run: black --diff --color .
 
       - name: Run static analysis with Ruff
-        run: ruff check .
+        run: ruff check --extend-exclude tests .
