@@ -11,6 +11,7 @@
 *.step
 *.stp
 *.stl
+*.brep
 *.xml
 *.out
 *.h5
