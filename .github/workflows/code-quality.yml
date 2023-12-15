@@ -32,4 +32,4 @@ jobs:
         run: black --diff --color .
 
       - name: Run static analysis with Ruff
-        run: ruff check --format=github --extend-exclude tests .
+        run: ruff check --output-format=github --extend-exclude tests .
