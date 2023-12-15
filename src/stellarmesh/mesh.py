@@ -78,6 +78,7 @@ class Mesh:
         geometry: Geometry,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
+        dim: int = 2,
     ):
         """Mesh solids with Gmsh.
 
@@ -86,9 +87,9 @@ class Mesh:
 
         Args:
             geometry: Geometry to be meshed.
-            mesh_filename: Optional filename to store .msh file. Defaults to None.
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
+            dim: Generate a mesh up to this dimension. Defaults to 2.
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
@@ -114,7 +115,7 @@ class Mesh:
 
             gmsh.option.set_number("Mesh.MeshSizeMin", min_mesh_size)
             gmsh.option.set_number("Mesh.MeshSizeMax", max_mesh_size)
-            gmsh.model.mesh.generate(2)
+            gmsh.model.mesh.generate(dim)
 
             mesh._save_changes(save_all=True)
             return mesh
