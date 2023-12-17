@@ -6,6 +6,7 @@ author: Alex Koen
 desc: Mesh class wraps Gmsh functionality for geometry meshing.
 """
 from __future__ import annotations
+
 import logging
 import subprocess
 import tempfile
