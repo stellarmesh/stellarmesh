@@ -91,7 +91,7 @@ class MOABModel:
         self._core = core
 
     @classmethod
-    def read_file(cls, h5m_file: str) -> MOABModel:
+    def from_h5m(cls, h5m_file: str) -> MOABModel:
         """Initialize model from .h5m file.
 
         Args:
