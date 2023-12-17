@@ -10,8 +10,8 @@ def geom_bd_sphere():
 
 
 def test_mesh_geometry_2d(geom_bd_sphere):
-    sm.Mesh.mesh_geometry(geom_bd_sphere, 5, 5, dim=2)
+    sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=2)
 
 
 def test_mesh_geometry_3d(geom_bd_sphere):
-    sm.Mesh.mesh_geometry(geom_bd_sphere, 5, 5, dim=3)
+    sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=3)

@@ -5,6 +5,7 @@ author: Alex Koen
 
 desc: Mesh class wraps Gmsh functionality for geometry meshing.
 """
+from __future__ import annotations
 import logging
 import subprocess
 import tempfile
@@ -73,13 +74,13 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def mesh_geometry(
+    def from_geometry(
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
         dim: int = 2,
-    ):
+    ) -> Mesh:
         """Mesh solids with Gmsh.
 
         See Gmsh documentation on mesh sizes:
@@ -199,7 +200,7 @@ class Mesh:
         hausdorff_value: float = 0.01,
         gradation_value: float = 1.3,
         optim: bool = False,
-    ) -> "Mesh":
+    ) -> Mesh:
         """Refine mesh using mmgs.
 
         See mmgs documentation:

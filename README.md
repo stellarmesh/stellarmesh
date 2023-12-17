@@ -69,7 +69,7 @@ for _ in range(3):
 solids = solids[1:]
 
 geometry = sm.Geometry(solids, material_names=["a", "a", "c"])
-mesh = sm.Mesh.mesh_geometry(geometry, min_mesh_size=50, max_mesh_size=50)
+mesh = sm.Mesh.from_geometry(geometry, min_mesh_size=50, max_mesh_size=50)
 mesh.write("test.msh")
 mesh.render("doc/torus-mesh-reversed.png", rotation_xyz=(90, 0, -90), normals=15)
 

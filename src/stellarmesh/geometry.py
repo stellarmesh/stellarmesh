@@ -5,6 +5,7 @@ author: Alex Koen
 
 desc: Geometry class represents a CAD geometry to be meshed.
 """
+from __future__ import annotations
 import logging
 from typing import Sequence, Union
 
@@ -73,14 +74,14 @@ class Geometry:
                 explorer.Next()
         return solids
 
-    # TODO(akoen): import_step and import_brep are not DRY
+    # TODO(akoen): from_step and from_brep are not DRY
     # https://github.com/Thea-Energy/stellarmesh/issues/2
     @classmethod
-    def import_step(
+    def from_step(
         cls,
         filename: str,
         material_names: Sequence[str],
-    ) -> "Geometry":
+    ) -> Geometry:
         """Import model from a step file.
 
         Args:
@@ -107,11 +108,11 @@ class Geometry:
         return cls(solids, material_names)
 
     @classmethod
-    def import_brep(
+    def from_brep(
         cls,
         filename: str,
         material_names: Sequence[str],
-    ) -> "Geometry":
+    ) -> Geometry:
         """Import model from a brep (cadquery, build123d native) file.
 
         Args:
@@ -134,7 +135,7 @@ class Geometry:
         logger.info(f"Importing {len(solids)} from {filename}")
         return cls(solids, material_names)
 
-    def imprint(self) -> "Geometry":
+    def imprint(self) -> Geometry:
         """Imprint faces of current geometry.
 
         Returns:
