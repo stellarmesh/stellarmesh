@@ -5,6 +5,8 @@ author: Alex Koen
 
 desc: MOABModel class represents a MOAB model.
 """
+from __future__ import annotations
+
 import logging
 import subprocess
 import tempfile
@@ -33,7 +35,7 @@ class MOABSurface(_MOABEntity):
     """MOAB surface entity."""
 
     @property
-    def adjacent_volumes(self) -> list["MOABVolume"]:
+    def adjacent_volumes(self) -> list[MOABVolume]:
         """Get adjacent volumes.
 
         Returns:
@@ -47,7 +49,7 @@ class MOABVolume(_MOABEntity):
     """MOAB volume entity."""
 
     @property
-    def adjacent_surfaces(self) -> list["MOABSurface"]:
+    def adjacent_surfaces(self) -> list[MOABSurface]:
         """Get adjacent surfaces.
 
         Returns:
@@ -89,7 +91,7 @@ class MOABModel:
         self._core = core
 
     @classmethod
-    def read_file(cls, h5m_file: str) -> "MOABModel":
+    def read_file(cls, h5m_file: str) -> MOABModel:
         """Initialize model from .h5m file.
 
         Args:
@@ -184,10 +186,10 @@ class MOABModel:
         return tag_handles
 
     @classmethod
-    def make_from_mesh(  # noqa: PLR0915
+    def from_mesh(  # noqa: PLR0915
         cls,
         mesh: Mesh,
-    ):
+    ) -> MOABModel:
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
@@ -310,7 +312,7 @@ class MOABModel:
         )
 
     @property
-    def surfaces(self):
+    def surfaces(self) -> list[MOABSurface]:
         """Get surfaces in this model.
 
         Returns:
@@ -320,7 +322,7 @@ class MOABModel:
         return [MOABSurface(self._core, h) for h in surface_handles]
 
     @property
-    def volumes(self):
+    def volumes(self) -> list[MOABVolume]:
         """Get volumes in this model.
 
         Returns:
