@@ -32,32 +32,41 @@ class _MOABEntity:
         self.handle = handle
 
 
-class MOABSurface(_MOABEntity):
-    """MOAB surface entity."""
+class _DAGMCEntity:
+    model: DAGMCModel
+    handle: np.uint64
+
+    def __init__(self, model: DAGMCModel, handle: np.uint64):
+        self.model = model
+        self.handle = handle
+
+
+class DAGMCSurface(_DAGMCEntity):
+    """DAGMC surface entity."""
 
     @property
-    def adjacent_volumes(self) -> list[MOABVolume]:
+    def adjacent_volumes(self) -> list[DAGMCVolume]:
         """Get adjacent volumes.
 
         Returns:
             Adjacent volumes.
         """
-        parent_entities = self._core.get_parent_meshsets(self.handle)
-        return [MOABVolume(self._core, e) for e in parent_entities]
+        parent_entities = self.model._core.get_parent_meshsets(self.handle)
+        return [DAGMCVolume(self.model, e) for e in parent_entities]
 
 
-class MOABVolume(_MOABEntity):
-    """MOAB volume entity."""
+class DAGMCVolume(_DAGMCEntity):
+    """DAGMC volume entity."""
 
     @property
-    def adjacent_surfaces(self) -> list[MOABSurface]:
+    def adjacent_surfaces(self) -> list[DAGMCSurface]:
         """Get adjacent surfaces.
 
         Returns:
             Adjacent surfaces.
         """
-        child_entities = self._core.get_child_meshsets(self.handle)
-        return [MOABSurface(self._core, e) for e in child_entities]
+        child_entities = self.model._core.get_child_meshsets(self.handle)
+        return [DAGMCSurface(self.model, e) for e in child_entities]
 
 
 @dataclass
@@ -129,6 +138,23 @@ class MOABModel:
             filename: Filename with format-appropriate extension.
         """
         self._core.write_file(filename)
+
+
+class DAGMCModel(MOABModel):
+    def __init__(self, core: pymoab.core.Core):
+        super().__init__(core)
+
+        # Determine mapping of (group name, group entity) to volume handles
+        category_tag = self._core.tag_get_handle(pymoab.types.CATEGORY_TAG_NAME)
+        group_handles = self._core.get_entities_by_type_and_tag(self._core.get_root_set(), pymoab.types.MBENTITYSET, [category_tag], ['Group'])
+        name_tag = self._core.tag_get_handle(pymoab.types.NAME_TAG_NAME)
+        self.groups = {}
+        for group_handle in group_handles:
+            # Get list of volume handles
+            volume_handles = self._core.get_entities_by_type_and_tag(group_handle, pymoab.types.MBENTITYSET, [category_tag], ['Volume'])
+            group_name = self._core.tag_get_data(name_tag, group_handle, flat=True)[0]
+            self.groups[group_handle, group_name] = volume_handles
+
 
     @staticmethod
     def make_watertight(
@@ -343,21 +369,21 @@ class MOABModel:
         )
 
     @property
-    def surfaces(self) -> list[MOABSurface]:
+    def surfaces(self) -> list[DAGMCSurface]:
         """Get surfaces in this model.
 
         Returns:
             Surfaces.
         """
         surface_handles = self._get_entities_of_geom_dimension(2)
-        return [MOABSurface(self._core, h) for h in surface_handles]
+        return [DAGMCSurface(self, h) for h in surface_handles]
 
     @property
-    def volumes(self) -> list[MOABVolume]:
+    def volumes(self) -> list[DAGMCVolume]:
         """Get volumes in this model.
 
         Returns:
             Volumes.
         """
         volume_handles = self._get_entities_of_geom_dimension(3)
-        return [MOABVolume(self._core, h) for h in volume_handles]
+        return [DAGMCVolume(self, h) for h in volume_handles]
