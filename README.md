@@ -4,6 +4,8 @@
 
 :warning: This library is in development. Expect breaking changes and bugs, and feel welcome to contribute.
 
+:warning: Use MOAB version <= 5.3.1. Later versions suffer from undocumented transport errors in DAGMC.
+
 :warning: See [logging](#logging) to enable logging output when using Jupyter.
 
 Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC). The goal is to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin) to enable a fully-featured and open-source workflow.
@@ -16,7 +18,6 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 - [x] Mesh refinement
 - [x] Automated testing and integration
 - [ ] Programatic manipulation of .h5m tags e.g. materials
-
 
 # Contents
 - [Contents](#contents)
