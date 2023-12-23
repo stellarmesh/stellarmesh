@@ -5,6 +5,7 @@ author: Alex Koen
 
 desc: MOABModel class represents a MOAB model.
 """
+import logging
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ import pymoab.core
 import pymoab.types
 
 from .mesh import Mesh
+
+logger = logging.getLogger(__name__)
 
 
 class _MOABEntity:
@@ -199,6 +202,11 @@ class MOABModel:
         known_groups: dict[int, np.uint64] = {}
 
         with mesh:
+            # Warn about volume elements being discarded
+            _, element_tags, _ = gmsh.model.mesh.get_elements(3)
+            if element_tags:
+                logger.warning("Discarding volume elements from mesh.")
+
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
             for i, volume_tag in enumerate(volume_tags):
