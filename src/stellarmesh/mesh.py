@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import tempfile
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
@@ -121,6 +122,32 @@ class Mesh:
 
             mesh._save_changes(save_all=True)
             return mesh
+
+    @classmethod
+    def mesh_geometry(
+        cls,
+        geometry: Geometry,
+        min_mesh_size: float = 50,
+        max_mesh_size: float = 50,
+        dim: int = 2,
+    ) -> Mesh:
+        """Mesh solids with Gmsh.
+
+        See Gmsh documentation on mesh sizes:
+        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
+
+        Args:
+            geometry: Geometry to be meshed.
+            min_mesh_size: Min mesh element size. Defaults to 50.
+            max_mesh_size: Max mesh element size. Defaults to 50.
+            dim: Generate a mesh up to this dimension. Defaults to 2.
+        """
+        warnings.warn(
+            "The mesh_geometry method is deprecated. Use from_geometry instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_geometry(geometry, min_mesh_size, max_mesh_size, dim)
 
     def render(
         self,

@@ -8,6 +8,7 @@ desc: Geometry class represents a CAD geometry to be meshed.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Sequence, Union
 
 from OCP.BOPAlgo import BOPAlgo_MakeConnected
@@ -109,6 +110,28 @@ class Geometry:
         return cls(solids, material_names)
 
     @classmethod
+    def import_step(
+        cls,
+        filename: str,
+        material_names: Sequence[str],
+    ) -> Geometry:
+        """Import model from a step file.
+
+        Args:
+            filename: File path to import.
+            material_names: Ordered list of material names matching solids in file.
+
+        Returns:
+            Model.
+        """
+        warnings.warn(
+            "The import_step method is deprecated. Use from_step instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_step(filename, material_names)
+
+    @classmethod
     def from_brep(
         cls,
         filename: str,
@@ -135,6 +158,28 @@ class Geometry:
 
         logger.info(f"Importing {len(solids)} from {filename}")
         return cls(solids, material_names)
+
+    @classmethod
+    def import_brep(
+        cls,
+        filename: str,
+        material_names: Sequence[str],
+    ) -> Geometry:
+        """Import model from a brep (cadquery, build123d native) file.
+
+        Args:
+            filename: File path to import.
+            material_names: Ordered list of material names matching solids in file.
+
+        Returns:
+            Model.
+        """
+        warnings.warn(
+            "The import_brep method is deprecated. Use from_brep instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_brep(cls, filename, material_names)
 
     def imprint(self) -> Geometry:
         """Imprint faces of current geometry.
