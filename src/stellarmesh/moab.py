@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import warnings
 from dataclasses import dataclass, field
+from functools import cached_property
 
 import gmsh
 import numpy as np
@@ -145,16 +146,68 @@ class DAGMCModel(MOABModel):
         super().__init__(core)
 
         # Determine mapping of (group name, group entity) to volume handles
-        category_tag = self._core.tag_get_handle(pymoab.types.CATEGORY_TAG_NAME)
-        group_handles = self._core.get_entities_by_type_and_tag(self._core.get_root_set(), pymoab.types.MBENTITYSET, [category_tag], ['Group'])
-        name_tag = self._core.tag_get_handle(pymoab.types.NAME_TAG_NAME)
+        group_handles = self._core.get_entities_by_type_and_tag(self._core.get_root_set(), pymoab.types.MBENTITYSET, [self.category_tag], ['Group'])
         self.groups = {}
         for group_handle in group_handles:
             # Get list of volume handles
-            volume_handles = self._core.get_entities_by_type_and_tag(group_handle, pymoab.types.MBENTITYSET, [category_tag], ['Volume'])
-            group_name = self._core.tag_get_data(name_tag, group_handle, flat=True)[0]
+            volume_handles = self._core.get_entities_by_type_and_tag(group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ['Volume'])
+            group_name = self._core.tag_get_data(self.name_tag, group_handle, flat=True)[0]
             self.groups[group_handle, group_name] = volume_handles
 
+    @cached_property
+    def category_tag(self) -> pymoab.tag.Tag:
+        return self._core.tag_get_handle(
+            pymoab.types.CATEGORY_TAG_NAME,
+            pymoab.types.CATEGORY_TAG_SIZE,
+            pymoab.types.MB_TYPE_OPAQUE,
+            pymoab.types.MB_TAG_SPARSE,
+            create_if_missing=True,
+        )
+
+    @cached_property
+    def name_tag(self) -> pymoab.tag.Tag:
+        return self._core.tag_get_handle(
+            pymoab.types.NAME_TAG_NAME,
+            pymoab.types.NAME_TAG_SIZE,
+            pymoab.types.MB_TYPE_OPAQUE,
+            pymoab.types.MB_TAG_SPARSE,
+            create_if_missing=True,
+        )
+
+    @cached_property
+    def id_tag(self) -> pymoab.tag.Tag:
+        # Default tag, does not need to be created
+        return self._core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
+
+    @cached_property
+    def geom_dimension_tag(self) -> pymoab.tag.Tag:
+        return self._core.tag_get_handle(
+            pymoab.types.GEOM_DIMENSION_TAG_NAME,
+            1,
+            pymoab.types.MB_TYPE_INTEGER,
+            pymoab.types.MB_TAG_SPARSE,
+            create_if_missing=True,
+        )
+
+    @cached_property
+    def surf_sense_tag(self) -> pymoab.tag.Tag:
+        return self._core.tag_get_handle(
+            "GEOM_SENSE_2",
+            2,
+            pymoab.types.MB_TYPE_HANDLE,
+            pymoab.types.MB_TAG_SPARSE,
+            create_if_missing=True,
+        )
+
+    @cached_property
+    def faceting_tol_tag(self) -> pymoab.tag.Tag:
+        return self._core.tag_get_handle(
+            "FACETING_TOL",
+            1,
+            pymoab.types.MB_TYPE_DOUBLE,
+            pymoab.types.MB_TAG_SPARSE,
+            create_if_missing=True,
+        )
 
     @staticmethod
     def make_watertight(
@@ -175,60 +228,6 @@ class DAGMCModel(MOABModel):
             check=True,
         )
 
-    @staticmethod
-    def _get_moab_tag_handles(core: pymoab.core.Core) -> dict[str, np.uint64]:
-        tag_handles = {}
-
-        sense_tag_name = "GEOM_SENSE_2"
-        sense_tag_size = 2
-        tag_handles["surf_sense"] = core.tag_get_handle(
-            sense_tag_name,
-            sense_tag_size,
-            pymoab.types.MB_TYPE_HANDLE,
-            pymoab.types.MB_TAG_SPARSE,
-            create_if_missing=True,
-        )
-
-        tag_handles["category"] = core.tag_get_handle(
-            pymoab.types.CATEGORY_TAG_NAME,
-            pymoab.types.CATEGORY_TAG_SIZE,
-            pymoab.types.MB_TYPE_OPAQUE,
-            pymoab.types.MB_TAG_SPARSE,
-            create_if_missing=True,
-        )
-
-        tag_handles["name"] = core.tag_get_handle(
-            pymoab.types.NAME_TAG_NAME,
-            pymoab.types.NAME_TAG_SIZE,
-            pymoab.types.MB_TYPE_OPAQUE,
-            pymoab.types.MB_TAG_SPARSE,
-            create_if_missing=True,
-        )
-
-        geom_dimension_tag_size = 1
-        tag_handles["geom_dimension"] = core.tag_get_handle(
-            pymoab.types.GEOM_DIMENSION_TAG_NAME,
-            geom_dimension_tag_size,
-            pymoab.types.MB_TYPE_INTEGER,
-            pymoab.types.MB_TAG_SPARSE,
-            create_if_missing=True,
-        )
-
-        faceting_tol_tag_name = "FACETING_TOL"
-        faceting_tol_tag_size = 1
-        tag_handles["faceting_tol"] = core.tag_get_handle(
-            faceting_tol_tag_name,
-            faceting_tol_tag_size,
-            pymoab.types.MB_TYPE_DOUBLE,
-            pymoab.types.MB_TAG_SPARSE,
-            create_if_missing=True,
-        )
-
-        # Default tag, does not need to be created
-        tag_handles["global_id"] = core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
-
-        return tag_handles
-
     @classmethod
     def from_mesh(  # noqa: PLR0915
         cls,
@@ -240,8 +239,7 @@ class DAGMCModel(MOABModel):
             mesh: Mesh from which to build DAGMC geometry.
         """
         core = pymoab.core.Core()
-
-        tag_handles = cls._get_moab_tag_handles(core)
+        model = cls(core)
 
         known_surfaces: dict[int, _Surface] = {}
         known_groups: dict[int, np.uint64] = {}
@@ -258,9 +256,9 @@ class DAGMCModel(MOABModel):
                 # Add volume set
                 volume_set_handle = core.create_meshset()
                 global_id = volume_set_handle
-                core.tag_set_data(tag_handles["global_id"], global_id, i)
-                core.tag_set_data(tag_handles["geom_dimension"], volume_set_handle, 3)
-                core.tag_set_data(tag_handles["category"], volume_set_handle, "Volume")
+                core.tag_set_data(model.id_tag, global_id, i)
+                core.tag_set_data(model.geom_dimension_tag, volume_set_handle, 3)
+                core.tag_set_data(model.category_tag, volume_set_handle, "Volume")
 
                 # Add volume to its physical group, which stores metadata incl. material
                 # TODO(akoen): should this be a parent-child relationship?
@@ -275,9 +273,9 @@ class DAGMCModel(MOABModel):
                 if (vol_group := vol_groups[0]) not in known_groups:
                     mat_name = gmsh.model.get_physical_name(3, vol_group)
                     group_set = core.create_meshset()
-                    core.tag_set_data(tag_handles["category"], group_set, "Group")
-                    core.tag_set_data(tag_handles["name"], group_set, f"{mat_name}")
-                    core.tag_set_data(tag_handles["global_id"], group_set, vol_group)
+                    core.tag_set_data(model.category_tag, group_set, "Group")
+                    core.tag_set_data(model.name_tag, group_set, f"{mat_name}")
+                    core.tag_set_data(model.id_tag, group_set, vol_group)
                     known_groups[vol_group] = group_set
                 else:
                     group_set = known_groups[vol_group]
@@ -301,16 +299,16 @@ class DAGMCModel(MOABModel):
                         known_surfaces[surface_tag] = surface
 
                         core.tag_set_data(
-                            tag_handles["global_id"], surface.handle, surface_tag
+                            model.id_tag, surface.handle, surface_tag
                         )
                         core.tag_set_data(
-                            tag_handles["geom_dimension"], surface.handle, 2
+                            model.geom_dimension_tag, surface.handle, 2
                         )
                         core.tag_set_data(
-                            tag_handles["category"], surface.handle, "Surface"
+                            model.category_tag, surface.handle, "Surface"
                         )
                         core.tag_set_data(
-                            tag_handles["surf_sense"],
+                            model.surf_sense_tag,
                             surface.handle,
                             surface.sense_data(),
                         )
@@ -330,7 +328,7 @@ class DAGMCModel(MOABModel):
                         surface = known_surfaces[surface_tag]
                         surface.reverse_volume = volume_set_handle
                         core.tag_set_data(
-                            tag_handles["surf_sense"],
+                            model.surf_sense_tag,
                             surface.handle,
                             surface.sense_data(),
                         )
@@ -343,10 +341,10 @@ class DAGMCModel(MOABModel):
             # https://github.com/Thea-Energy/neutronics-cad/issues/5
             # faceting_tol required to be set for make_watertight, although its
             # significance is not clear
-            core.tag_set_data(tag_handles["faceting_tol"], file_set, 1e-3)
+            core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
             core.add_entities(file_set, all_entities)
 
-            return cls(core)
+            return model
 
     @classmethod
     def make_from_mesh(cls, mesh: Mesh) -> MOABModel:
