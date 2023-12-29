@@ -69,6 +69,39 @@ class DAGMCVolume(_DAGMCEntity):
         child_entities = self.model._core.get_child_meshsets(self.handle)
         return [DAGMCSurface(self.model, e) for e in child_entities]
 
+    @property
+    def group_name(self) -> str:
+        for (_, group_name), volume_handles in self.model.groups.items():
+            if self.handle in volume_handles:
+                return group_name
+        else:
+            raise ValueError("DAGMC volume is not contained in a group.")
+
+    @group_name.setter
+    def group_name(self, name: str):
+        model = self.model
+        core = model._core
+
+        existing_group = False
+        for (group_handle, group_name), volume_handles in model.groups.items():
+            if name == group_name:
+                # Add volume to group matching specified name, unless the volume
+                # is already in it
+                if self.handle in volume_handles:
+                    return
+                core.add_entities(group_handle, [self.handle])
+                existing_group = True
+
+            elif self.handle in volume_handles:
+                # Remove name from existing set
+                core.remove_entities(group_handle, [self.handle])
+
+        if not existing_group:
+            # Create new set and add name/category tags
+            group_set = core.create_meshset()
+            core.tag_set_data(model.category_tag, group_set, "Group")
+            core.tag_set_data(model.name_tag, group_set, name)
+
 
 @dataclass
 class _Surface:
