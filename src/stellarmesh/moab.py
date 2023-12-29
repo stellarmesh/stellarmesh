@@ -101,59 +101,6 @@ class MOABModel:
         """
         self._core = core
 
-    @classmethod
-    def from_h5m(cls, h5m_file: str) -> MOABModel:
-        """Initialize model from .h5m file.
-
-        Args:
-            h5m_file: File to load.
-
-        Returns:
-            Initialized model.
-        """
-        core = pymoab.core.Core()
-        core.load_file(h5m_file)
-        return cls(core)
-
-    @classmethod
-    def read_file(cls, h5m_file: str) -> MOABModel:
-        """Initialize model from .h5m file.
-
-        Args:
-            h5m_file: File to load.
-
-        Returns:
-            Initialized model.
-        """
-        warnings.warn(
-            "The read_file method is deprecated. Use from_h5m instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return cls.from_h5m(h5m_file)
-
-    def write(self, filename: str):
-        """Write MOAB model to .h5m, .vtk, or other file.
-
-        Args:
-            filename: Filename with format-appropriate extension.
-        """
-        self._core.write_file(filename)
-
-
-class DAGMCModel(MOABModel):
-    def __init__(self, core: pymoab.core.Core):
-        super().__init__(core)
-
-        # Determine mapping of (group name, group entity) to volume handles
-        group_handles = self._core.get_entities_by_type_and_tag(self._core.get_root_set(), pymoab.types.MBENTITYSET, [self.category_tag], ['Group'])
-        self.groups = {}
-        for group_handle in group_handles:
-            # Get list of volume handles
-            volume_handles = self._core.get_entities_by_type_and_tag(group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ['Volume'])
-            group_name = self._core.tag_get_data(self.name_tag, group_handle, flat=True)[0]
-            self.groups[group_handle, group_name] = volume_handles
-
     @cached_property
     def category_tag(self) -> pymoab.tag.Tag:
         return self._core.tag_get_handle(
@@ -208,6 +155,71 @@ class DAGMCModel(MOABModel):
             pymoab.types.MB_TAG_SPARSE,
             create_if_missing=True,
         )
+
+    @classmethod
+    def from_h5m(cls, h5m_file: str) -> MOABModel:
+        """Initialize model from .h5m file.
+
+        Args:
+            h5m_file: File to load.
+
+        Returns:
+            Initialized model.
+        """
+        core = pymoab.core.Core()
+        core.load_file(h5m_file)
+        return cls(core)
+
+    @classmethod
+    def read_file(cls, h5m_file: str) -> MOABModel:
+        """Initialize model from .h5m file.
+
+        Args:
+            h5m_file: File to load.
+
+        Returns:
+            Initialized model.
+        """
+        warnings.warn(
+            "The read_file method is deprecated. Use from_h5m instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_h5m(h5m_file)
+
+    def write(self, filename: str):
+        """Write MOAB model to .h5m, .vtk, or other file.
+
+        Args:
+            filename: Filename with format-appropriate extension.
+        """
+        self._core.write_file(filename)
+
+
+class DAGMCModel(MOABModel):
+    def __init__(self, core: pymoab.core.Core):
+        super().__init__(core)
+
+    @property
+    def groups(self):
+        # Determine mapping of (group name, group entity) to volume handles
+        group_handles = self._core.get_entities_by_type_and_tag(
+            self._core.get_root_set(),
+            pymoab.types.MBENTITYSET,
+            [self.category_tag],
+            ["Group"],
+        )
+        groups = {}
+        for group_handle in group_handles:
+            # Get list of volume handles
+            volume_handles = self._core.get_entities_by_type_and_tag(
+                group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ["Volume"]
+            )
+            group_name = self._core.tag_get_data(
+                self.name_tag, group_handle, flat=True
+            )[0]
+            groups[group_handle, group_name] = volume_handles
+        return groups
 
     @staticmethod
     def make_watertight(
@@ -298,15 +310,9 @@ class DAGMCModel(MOABModel):
                         surface.forward_volume = volume_set_handle
                         known_surfaces[surface_tag] = surface
 
-                        core.tag_set_data(
-                            model.id_tag, surface.handle, surface_tag
-                        )
-                        core.tag_set_data(
-                            model.geom_dimension_tag, surface.handle, 2
-                        )
-                        core.tag_set_data(
-                            model.category_tag, surface.handle, "Surface"
-                        )
+                        core.tag_set_data(model.id_tag, surface.handle, surface_tag)
+                        core.tag_set_data(model.geom_dimension_tag, surface.handle, 2)
+                        core.tag_set_data(model.category_tag, surface.handle, "Surface")
                         core.tag_set_data(
                             model.surf_sense_tag,
                             surface.handle,
@@ -361,9 +367,8 @@ class DAGMCModel(MOABModel):
         return cls.from_mesh(mesh)
 
     def _get_entities_of_geom_dimension(self, dim: int) -> list[np.uint64]:
-        dim_tag = self._core.tag_get_handle(pymoab.types.GEOM_DIMENSION_TAG_NAME)
         return self._core.get_entities_by_type_and_tag(
-            0, pymoab.types.MBENTITYSET, dim_tag, [dim]
+            0, pymoab.types.MBENTITYSET, self.geom_dimension_tag, [dim]
         )
 
     @property
