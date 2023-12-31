@@ -207,6 +207,23 @@ class MOABModel:
         return cls(core)
 
     @classmethod
+    def from_mesh(cls, mesh: Mesh) -> MOABModel:
+        """Create MOAB model from mesh.
+
+        Args:
+            mesh: Mesh from which to build MOAB mesh.
+
+        Returns:
+            Initialize model.
+        """
+        core = pymoab.core.Core()
+        with tempfile.NamedTemporaryFile(suffix=".vtk", delete=True) as mesh_file:
+            with mesh:
+                gmsh.write(mesh_file.name)
+            core.load_file(mesh_file.name)
+        return cls(core)
+
+    @classmethod
     def read_file(cls, h5m_file: str) -> MOABModel:
         """Initialize model from .h5m file.
 
@@ -238,6 +255,7 @@ class DAGMCModel(MOABModel):
     Args:
         core: Pymoab core.
     """
+
     def __init__(self, core: pymoab.core.Core):
         super().__init__(core)
 
