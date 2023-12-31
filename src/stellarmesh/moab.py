@@ -121,9 +121,12 @@ class _Surface:
 
 
 class MOABModel:
-    """MOAB Model."""
+    """MOAB Model.
 
-    # h5m_filename: str
+    Args:
+        core: Pymoab core.
+    """
+
     _core: pymoab.core.Core
 
     def __init__(self, core: pymoab.core.Core):
@@ -230,13 +233,18 @@ class MOABModel:
 
 
 class DAGMCModel(MOABModel):
+    """DAGMC Model.
+
+    Args:
+        core: Pymoab core.
+    """
     def __init__(self, core: pymoab.core.Core):
         super().__init__(core)
 
     @property
-    def groups(self):
+    def groups(self) -> dict[tuple[np.uint64, str], pymoab.rng.Range]:
         # Determine mapping of (group name, group entity) to volume handles
-        group_handles = self._core.get_entities_by_type_and_tag(
+        group_handles: pymoab.rng.Range = self._core.get_entities_by_type_and_tag(
             self._core.get_root_set(),
             pymoab.types.MBENTITYSET,
             [self.category_tag],
@@ -245,10 +253,10 @@ class DAGMCModel(MOABModel):
         groups = {}
         for group_handle in group_handles:
             # Get list of volume handles
-            volume_handles = self._core.get_entities_by_type_and_tag(
+            volume_handles: pymoab.rng.Range = self._core.get_entities_by_type_and_tag(
                 group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ["Volume"]
             )
-            group_name = self._core.tag_get_data(
+            group_name: str = self._core.tag_get_data(
                 self.name_tag, group_handle, flat=True
             )[0]
             groups[group_handle, group_name] = volume_handles
