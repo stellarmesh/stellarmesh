@@ -26,19 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 class _MOABEntity:
-    _core: pymoab.core.Core
+    model: MOABModel
     handle: np.uint64
 
-    def __init__(self, core: pymoab.core.Core, handle: np.uint64):
-        self._core = core
-        self.handle = handle
-
-
-class _DAGMCEntity:
-    model: DAGMCModel
-    handle: np.uint64
-
-    def __init__(self, model: DAGMCModel, handle: np.uint64):
+    def __init__(self, model: MOABModel, handle: np.uint64):
         self.model = model
         self.handle = handle
 
@@ -49,8 +40,10 @@ class _DAGMCEntity:
         return hash(self.handle)
 
 
-class DAGMCSurface(_DAGMCEntity):
+class DAGMCSurface(_MOABEntity):
     """DAGMC surface entity."""
+
+    model: DAGMCModel
 
     @property
     def adjacent_volumes(self) -> list[DAGMCVolume]:
@@ -68,8 +61,10 @@ class DAGMCSurface(_DAGMCEntity):
         return self.model._core.get_entities_by_type(self.handle, pymoab.types.MBTRI)
 
 
-class DAGMCVolume(_DAGMCEntity):
+class DAGMCVolume(_MOABEntity):
     """DAGMC volume entity."""
+
+    model: DAGMCModel
 
     @property
     def adjacent_surfaces(self) -> list[DAGMCSurface]:
@@ -83,6 +78,7 @@ class DAGMCVolume(_DAGMCEntity):
 
     @property
     def group_name(self) -> str:
+        """Name of the group containing this volume."""
         for (_, group_name), volume_handles in self.model.groups.items():
             if self.handle in volume_handles:
                 return group_name
