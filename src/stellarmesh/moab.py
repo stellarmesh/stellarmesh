@@ -39,6 +39,12 @@ class _MOABEntity:
     def __hash__(self):
         return hash(self.handle)
 
+    @property
+    def id(self):
+        """Global ID"""
+        model = self.model
+        return model._core.tag_get_data(model.id_tag, self.handle, flat=True)[0]
+
 
 class DAGMCSurface(_MOABEntity):
     """DAGMC surface entity."""
