@@ -1,4 +1,4 @@
-"""Stellarmesh MOAB model.
+"""Stellarmesh MOAB/DAGMC models.
 
 name: moab.py
 author: Alex Koen
@@ -18,6 +18,7 @@ import gmsh
 import numpy as np
 import pymoab.core
 import pymoab.types
+from pymoab.rng import Range
 
 from .mesh import Mesh
 
@@ -54,6 +55,11 @@ class DAGMCSurface(_DAGMCEntity):
         """
         parent_entities = self.model._core.get_parent_meshsets(self.handle)
         return [DAGMCVolume(self.model, e) for e in parent_entities]
+
+    @property
+    def triangles(self) -> Range:
+        """Get range of triangle elements."""
+        return self.model._core.get_entities_by_type(self.handle, pymoab.types.MBTRI)
 
 
 class DAGMCVolume(_DAGMCEntity):
@@ -123,8 +129,8 @@ class _Surface:
 class MOABModel:
     """MOAB Model.
 
-    Args:
-        core: Pymoab core.
+    This class holds a generic MOAB mesh, which could be a 2D surface mesh used
+    in DAGMC, a 3D tetrahedral mesh, etc.
     """
 
     _core: pymoab.core.Core
@@ -192,6 +198,25 @@ class MOABModel:
             create_if_missing=True,
         )
 
+    @property
+    def root_set(self) -> np.uint64:
+        """Get handle of MOAB root entity set."""
+        return self._core.get_root_set()
+
+    @property
+    def tets(self) -> Range:
+        """Get range of tetrahedral elements."""
+        return self._core.get_entities_by_type(
+            self.root_set, pymoab.types.MBTET, recur=True
+        )
+
+    @property
+    def triangles(self) -> Range:
+        """Get range of triangle elements."""
+        return self._core.get_entities_by_type(
+            self.root_set, pymoab.types.MBTRI, recur=True
+        )
+
     @classmethod
     def from_h5m(cls, h5m_file: str) -> MOABModel:
         """Initialize model from .h5m file.
@@ -214,7 +239,7 @@ class MOABModel:
             mesh: Mesh from which to build MOAB mesh.
 
         Returns:
-            Initialize model.
+            Initialized model.
         """
         core = pymoab.core.Core()
         with tempfile.NamedTemporaryFile(suffix=".vtk", delete=True) as mesh_file:
@@ -250,20 +275,24 @@ class MOABModel:
 
 
 class DAGMCModel(MOABModel):
-    """DAGMC Model.
-
-    Args:
-        core: Pymoab core.
-    """
+    """DAGMC Model."""
 
     def __init__(self, core: pymoab.core.Core):
+        """Initialize DAGMC model from a pymoab Core object
+
+        Args:
+            core: Pymoab core.
+        """
         super().__init__(core)
 
     @property
-    def groups(self) -> dict[tuple[np.uint64, str], pymoab.rng.Range]:
+    def groups(self) -> dict[tuple[np.uint64, str], Range]:
+        """Get dictionary mapping a tuple of (group handle, group name) to the
+        corresponding range containing entity sets in the group."""
+
         # Determine mapping of (group name, group entity) to volume handles
-        group_handles: pymoab.rng.Range = self._core.get_entities_by_type_and_tag(
-            self._core.get_root_set(),
+        group_handles: Range = self._core.get_entities_by_type_and_tag(
+            self.root_set,
             pymoab.types.MBENTITYSET,
             [self.category_tag],
             ["Group"],
@@ -271,7 +300,7 @@ class DAGMCModel(MOABModel):
         groups = {}
         for group_handle in group_handles:
             # Get list of volume handles
-            volume_handles: pymoab.rng.Range = self._core.get_entities_by_type_and_tag(
+            volume_handles: Range = self._core.get_entities_by_type_and_tag(
                 group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ["Volume"]
             )
             group_name: str = self._core.tag_get_data(
@@ -303,7 +332,7 @@ class DAGMCModel(MOABModel):
     def from_mesh(  # noqa: PLR0915
         cls,
         mesh: Mesh,
-    ) -> MOABModel:
+    ) -> DAGMCModel:
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
@@ -412,7 +441,7 @@ class DAGMCModel(MOABModel):
             return model
 
     @classmethod
-    def make_from_mesh(cls, mesh: Mesh) -> MOABModel:
+    def make_from_mesh(cls, mesh: Mesh) -> DAGMCModel:
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
