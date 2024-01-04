@@ -42,6 +42,12 @@ class _DAGMCEntity:
         self.model = model
         self.handle = handle
 
+    def __eq__(self, other):
+        return self.handle == other.handle
+
+    def __hash__(self):
+        return hash(self.handle)
+
 
 class DAGMCSurface(_DAGMCEntity):
     """DAGMC surface entity."""
@@ -103,10 +109,11 @@ class DAGMCVolume(_DAGMCEntity):
                 core.remove_entities(group_handle, [self.handle])
 
         if not existing_group:
-            # Create new set and add name/category tags
-            group_set = core.create_meshset()
-            core.tag_set_data(model.category_tag, group_set, "Group")
-            core.tag_set_data(model.name_tag, group_set, name)
+            # Create new group, add name/category tags, add entity
+            group_handle = core.create_meshset()
+            core.tag_set_data(model.category_tag, group_handle, "Group")
+            core.tag_set_data(model.name_tag, group_handle, name)
+            core.add_entities(group_handle, [self.handle])
 
 
 @dataclass
