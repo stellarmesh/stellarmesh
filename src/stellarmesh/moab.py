@@ -13,6 +13,7 @@ import tempfile
 import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import Optional
 
 import gmsh
 import numpy as np
@@ -83,22 +84,31 @@ class DAGMCVolume(_MOABEntity):
         return [DAGMCSurface(self.model, e) for e in child_entities]
 
     @property
-    def group_name(self) -> str:
-        """Name of the group containing this volume."""
+    def groups(self) -> list[str]:
+        """Get list of groups containing this volume"""
+        result = []
         for (_, group_name), volume_handles in self.model.groups.items():
             if self.handle in volume_handles:
-                return group_name
-        else:
-            raise ValueError("DAGMC volume is not contained in a group.")
+                result.append(group_name)
+        return result
 
-    @group_name.setter
-    def group_name(self, name: str):
+    @property
+    def material(self) -> Optional[str]:
+        """Name of the material assigned to this volume."""
+        for (_, group_name), volume_handles in self.model.groups.items():
+            if self.handle in volume_handles and group_name.startswith("mat:"):
+                return group_name[4:]
+        else:
+            return None
+
+    @material.setter
+    def material(self, name: str):
         model = self.model
         core = model._core
 
         existing_group = False
         for (group_handle, group_name), volume_handles in model.groups.items():
-            if name == group_name:
+            if f"mat:{name}" == group_name:
                 # Add volume to group matching specified name, unless the volume
                 # is already in it
                 if self.handle in volume_handles:
@@ -106,7 +116,7 @@ class DAGMCVolume(_MOABEntity):
                 core.add_entities(group_handle, [self.handle])
                 existing_group = True
 
-            elif self.handle in volume_handles:
+            elif self.handle in volume_handles and group_name.startswith("mat:"):
                 # Remove name from existing set
                 core.remove_entities(group_handle, [self.handle])
 
@@ -114,7 +124,7 @@ class DAGMCVolume(_MOABEntity):
             # Create new group, add name/category tags, add entity
             group_handle = core.create_meshset()
             core.tag_set_data(model.category_tag, group_handle, "Group")
-            core.tag_set_data(model.name_tag, group_handle, name)
+            core.tag_set_data(model.name_tag, group_handle, f"mat:{name}")
             core.add_entities(group_handle, [self.handle])
 
 

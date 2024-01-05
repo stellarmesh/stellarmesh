@@ -55,12 +55,15 @@ def test_triangles(model):
     assert all_tris.contains(surf_tris)
 
 
-def test_group_name(model):
+def test_material(model):
     vol = model.volumes[0]
-    assert vol.group_name == "mat:iron"
+    assert vol.material == "iron"
+    assert "mat:iron" in vol.groups
 
-    vol.group_name = "mat:plastic"
-    assert vol.group_name == "mat:plastic"
+    vol.material = "plastic"
+    assert vol.material == "plastic"
+    assert "mat:iron" not in vol.groups
+    assert "mat:plastic" in vol.groups
 
     group_names = {x[1] for x in model.groups.keys()}
     assert "mat:plastic" in group_names
