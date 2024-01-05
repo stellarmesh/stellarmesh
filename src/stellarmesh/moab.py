@@ -5,9 +5,12 @@ author: Alex Koen
 
 desc: MOABModel class represents a MOAB model.
 """
+from __future__ import annotations
+
 import logging
 import subprocess
 import tempfile
+import warnings
 from dataclasses import dataclass, field
 
 import gmsh
@@ -33,7 +36,7 @@ class MOABSurface(_MOABEntity):
     """MOAB surface entity."""
 
     @property
-    def adjacent_volumes(self) -> list["MOABVolume"]:
+    def adjacent_volumes(self) -> list[MOABVolume]:
         """Get adjacent volumes.
 
         Returns:
@@ -47,7 +50,7 @@ class MOABVolume(_MOABEntity):
     """MOAB volume entity."""
 
     @property
-    def adjacent_surfaces(self) -> list["MOABSurface"]:
+    def adjacent_surfaces(self) -> list[MOABSurface]:
         """Get adjacent surfaces.
 
         Returns:
@@ -89,7 +92,7 @@ class MOABModel:
         self._core = core
 
     @classmethod
-    def read_file(cls, h5m_file: str) -> "MOABModel":
+    def from_h5m(cls, h5m_file: str) -> MOABModel:
         """Initialize model from .h5m file.
 
         Args:
@@ -101,6 +104,23 @@ class MOABModel:
         core = pymoab.core.Core()
         core.load_file(h5m_file)
         return cls(core)
+
+    @classmethod
+    def read_file(cls, h5m_file: str) -> MOABModel:
+        """Initialize model from .h5m file.
+
+        Args:
+            h5m_file: File to load.
+
+        Returns:
+            Initialized model.
+        """
+        warnings.warn(
+            "The read_file method is deprecated. Use from_h5m instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_h5m(h5m_file)
 
     def write(self, filename: str):
         """Write MOAB model to .h5m, .vtk, or other file.
@@ -184,15 +204,14 @@ class MOABModel:
         return tag_handles
 
     @classmethod
-    def make_from_mesh(  # noqa: PLR0915
+    def from_mesh(  # noqa: PLR0915
         cls,
         mesh: Mesh,
-    ):
+    ) -> MOABModel:
         """Compose DAGMC MOAB .h5m file from mesh.
 
         Args:
             mesh: Mesh from which to build DAGMC geometry.
-            filename: Filename of the output .h5m file.
         """
         core = pymoab.core.Core()
 
@@ -303,6 +322,20 @@ class MOABModel:
 
             return cls(core)
 
+    @classmethod
+    def make_from_mesh(cls, mesh: Mesh) -> MOABModel:
+        """Compose DAGMC MOAB .h5m file from mesh.
+
+        Args:
+            mesh: Mesh from which to build DAGMC geometry.
+        """
+        warnings.warn(
+            "The make_from_mesh method is deprecated. Use from_mesh instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return cls.from_mesh(mesh)
+
     def _get_entities_of_geom_dimension(self, dim: int) -> list[np.uint64]:
         dim_tag = self._core.tag_get_handle(pymoab.types.GEOM_DIMENSION_TAG_NAME)
         return self._core.get_entities_by_type_and_tag(
@@ -310,7 +343,7 @@ class MOABModel:
         )
 
     @property
-    def surfaces(self):
+    def surfaces(self) -> list[MOABSurface]:
         """Get surfaces in this model.
 
         Returns:
@@ -320,7 +353,7 @@ class MOABModel:
         return [MOABSurface(self._core, h) for h in surface_handles]
 
     @property
-    def volumes(self):
+    def volumes(self) -> list[MOABVolume]:
         """Get volumes in this model.
 
         Returns:

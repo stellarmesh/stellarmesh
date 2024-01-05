@@ -51,26 +51,26 @@ def test_geometry_init_wrong_materials(geom_bd_layered_torus):
 
 def test_step_import_compound(geom_bd_layered_torus):
     bd.Compound.make_compound(geom_bd_layered_torus).export_step("model.step")
-    sm.Geometry.import_step("model.step", material_names=[""] * 3)
+    sm.Geometry.from_step("model.step", material_names=[""] * 3)
     with pytest.raises(ValueError):
-        sm.Geometry.import_step("model.step", material_names=[""] * 2)
+        sm.Geometry.from_step("model.step", material_names=[""] * 2)
 
 
 def test_step_import_solid(geom_bd_layered_torus):
     geom_bd_layered_torus[0].export_step("layer.step")
-    sm.Geometry.import_step("layer.step", material_names=[""])
+    sm.Geometry.from_step("layer.step", material_names=[""])
 
 
 def test_brep_import_compound(geom_bd_layered_torus):
     bd.Compound.make_compound(geom_bd_layered_torus).export_brep("model.brep")
-    sm.Geometry.import_brep("model.brep", material_names=[""] * 3)
+    sm.Geometry.from_brep("model.brep", material_names=[""] * 3)
     with pytest.raises(ValueError):
-        sm.Geometry.import_brep("model.brep", material_names=[""] * 2)
+        sm.Geometry.from_brep("model.brep", material_names=[""] * 2)
 
 
 def test_brep_import_solid(geom_bd_layered_torus):
     geom_bd_layered_torus[0].export_brep("layer.brep")
-    sm.Geometry.import_brep("layer.brep", material_names=[""])
+    sm.Geometry.from_brep("layer.brep", material_names=[""])
 
 
 def test_geometry_imprint(geom_bd_layered_torus):
