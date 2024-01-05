@@ -49,6 +49,10 @@ class EntitySet:
         model = self.model
         return model._core.tag_get_data(model.id_tag, self.handle, flat=True)[0]
 
+    @id.setter
+    def id(self, value: int):
+        self.model._core.tag_set_data(self.model.id_tag, self.handle, value)
+
 
 class DAGMCGroup(EntitySet):
     def __contains__(self, entity_set: EntitySet) -> bool:
@@ -95,7 +99,7 @@ class DAGMCGroup(EntitySet):
         Args:
             entity_set: Entity set to add
         """
-        self.model._core.add_entities(self.handle, [entity_set.handle])
+        self.model._core.add_entity(self.handle, entity_set.handle)
 
     def remove(self, entity_set: EntitySet):
         """Remove entity set from the group.
@@ -103,7 +107,7 @@ class DAGMCGroup(EntitySet):
         Args:
             entity_set: Entity set to remove
         """
-        self.model._core.remove_entities(self.handle, [entity_set.handle])
+        self.model._core.remove_entity(self.handle, entity_set.handle)
 
 
 class DAGMCSurface(EntitySet):
@@ -403,7 +407,7 @@ class DAGMCModel(MOABModel):
         model = cls(core)
 
         known_surfaces: dict[int, _Surface] = {}
-        known_groups: dict[int, np.uint64] = {}
+        known_groups: dict[int, DAGMCGroup] = {}
 
         with mesh:
             # Warn about volume elements being discarded
@@ -433,15 +437,13 @@ class DAGMCModel(MOABModel):
 
                 if (vol_group := vol_groups[0]) not in known_groups:
                     mat_name = gmsh.model.get_physical_name(3, vol_group)
-                    group_set = core.create_meshset()
-                    core.tag_set_data(model.category_tag, group_set, "Group")
-                    core.tag_set_data(model.name_tag, group_set, f"{mat_name}")
-                    core.tag_set_data(model.id_tag, group_set, vol_group)
-                    known_groups[vol_group] = group_set
+                    group = model.create_group(mat_name)
+                    group.id = vol_group
+                    known_groups[vol_group] = group
                 else:
-                    group_set = known_groups[vol_group]
+                    group = known_groups[vol_group]
 
-                core.add_entity(group_set, volume_set_handle)
+                group.add(volume_set_handle)
 
                 # Add surfaces to MOAB core, respecting surface sense.
                 # Logic: Gmsh meshes volumes in order. When it gets to the first volume,
