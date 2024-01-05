@@ -58,12 +58,29 @@ def test_triangles(model):
 def test_material(model):
     vol = model.volumes[0]
     assert vol.material == "iron"
-    assert "mat:iron" in vol.groups
+    assert "mat:iron" in {group.name for group in vol.groups}
 
     vol.material = "plastic"
     assert vol.material == "plastic"
-    assert "mat:iron" not in vol.groups
-    assert "mat:plastic" in vol.groups
+    vol_group_names = {group.name for group in vol.groups}
+    assert "mat:iron" not in vol_group_names
+    assert "mat:plastic" in vol_group_names
 
-    group_names = {x[1] for x in model.groups.keys()}
-    assert "mat:plastic" in group_names
+    all_group_names = {group.name for group in model.groups}
+    assert "mat:plastic" in all_group_names
+
+
+def test_group(model):
+    vol = model.volumes[0]
+
+    group = model.create_group("test_group")
+    assert group.name == "test_group"
+
+    group.name = "funny group"
+    assert group.name == "funny group"
+
+    group.add(vol)
+    assert vol in group
+
+    group.remove(vol)
+    assert vol not in group

@@ -26,7 +26,7 @@ from .mesh import Mesh
 logger = logging.getLogger(__name__)
 
 
-class _MOABEntity:
+class EntitySet:
     model: MOABModel
     handle: np.uint64
 
@@ -34,20 +34,79 @@ class _MOABEntity:
         self.model = model
         self.handle = handle
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return self.handle == other.handle
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.handle)
 
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__}(id={self.id})>"
+
     @property
-    def id(self):
+    def id(self) -> int:
         """Global ID"""
         model = self.model
         return model._core.tag_get_data(model.id_tag, self.handle, flat=True)[0]
 
 
-class DAGMCSurface(_MOABEntity):
+class DAGMCGroup(EntitySet):
+    def __contains__(self, entity_set: EntitySet) -> bool:
+        for vol in self.volumes:
+            if vol.handle == entity_set.handle:
+                return True
+        return False
+
+    def __repr__(self) -> str:
+        return f"<DAGMCGroup: {self.name})>"
+
+    @property
+    def name(self) -> str:
+        """Name of the group"""
+        model = self.model
+        return model._core.tag_get_data(model.name_tag, self.handle, flat=True)[0]
+
+    @name.setter
+    def name(self, value: str):
+        self.model._core.tag_set_data(self.model.name_tag, self.handle, value)
+
+    @property
+    def volumes(self) -> list[DAGMCVolume]:
+        """Get list of volumes contained in this group"""
+        handles: Range = self.model._core.get_entities_by_type_and_tag(
+            self.handle, pymoab.types.MBENTITYSET, [self.model.category_tag], ["Volume"]
+        )
+        return [DAGMCVolume(self.model, handle) for handle in handles]
+
+    @property
+    def surfaces(self) -> list[DAGMCSurface]:
+        """Get list of surfaces contained in this group"""
+        handles: Range = self.model._core.get_entities_by_type_and_tag(
+            self.handle,
+            pymoab.types.MBENTITYSET,
+            [self.model.category_tag],
+            ["Surface"],
+        )
+        return [DAGMCSurface(self.model, handle) for handle in handles]
+
+    def add(self, entity_set: EntitySet):
+        """Add entity set to the group.
+
+        Args:
+            entity_set: Entity set to add
+        """
+        self.model._core.add_entities(self.handle, [entity_set.handle])
+
+    def remove(self, entity_set: EntitySet):
+        """Remove entity set from the group.
+
+        Args:
+            entity_set: Entity set to remove
+        """
+        self.model._core.remove_entities(self.handle, [entity_set.handle])
+
+
+class DAGMCSurface(EntitySet):
     """DAGMC surface entity."""
 
     model: DAGMCModel
@@ -68,7 +127,7 @@ class DAGMCSurface(_MOABEntity):
         return self.model._core.get_entities_by_type(self.handle, pymoab.types.MBTRI)
 
 
-class DAGMCVolume(_MOABEntity):
+class DAGMCVolume(EntitySet):
     """DAGMC volume entity."""
 
     model: DAGMCModel
@@ -84,48 +143,39 @@ class DAGMCVolume(_MOABEntity):
         return [DAGMCSurface(self.model, e) for e in child_entities]
 
     @property
-    def groups(self) -> list[str]:
+    def groups(self) -> list[DAGMCGroup]:
         """Get list of groups containing this volume"""
-        result = []
-        for (_, group_name), volume_handles in self.model.groups.items():
-            if self.handle in volume_handles:
-                result.append(group_name)
-        return result
+        return [group for group in self.model.groups if self in group]
 
     @property
     def material(self) -> Optional[str]:
         """Name of the material assigned to this volume."""
-        for (_, group_name), volume_handles in self.model.groups.items():
-            if self.handle in volume_handles and group_name.startswith("mat:"):
-                return group_name[4:]
+        for group in self.groups:
+            if self in group and group.name.startswith("mat:"):
+                return group.name[4:]
         else:
             return None
 
     @material.setter
     def material(self, name: str):
-        model = self.model
-        core = model._core
-
         existing_group = False
-        for (group_handle, group_name), volume_handles in model.groups.items():
-            if f"mat:{name}" == group_name:
+        for group in self.model.groups:
+            if f"mat:{name}" == group.name:
                 # Add volume to group matching specified name, unless the volume
                 # is already in it
-                if self.handle in volume_handles:
+                if self in group:
                     return
-                core.add_entities(group_handle, [self.handle])
+                group.add(self)
                 existing_group = True
 
-            elif self.handle in volume_handles and group_name.startswith("mat:"):
-                # Remove name from existing set
-                core.remove_entities(group_handle, [self.handle])
+            elif self in group and group.name.startswith("mat:"):
+                # Remove volume from existing group
+                group.remove(self)
 
         if not existing_group:
             # Create new group, add name/category tags, add entity
-            group_handle = core.create_meshset()
-            core.tag_set_data(model.category_tag, group_handle, "Group")
-            core.tag_set_data(model.name_tag, group_handle, f"mat:{name}")
-            core.add_entities(group_handle, [self.handle])
+            new_group = self.model.create_group(f"mat:{name}")
+            new_group.add(self)
 
 
 @dataclass
@@ -296,37 +346,29 @@ class MOABModel:
 class DAGMCModel(MOABModel):
     """DAGMC Model."""
 
-    def __init__(self, core: pymoab.core.Core):
-        """Initialize DAGMC model from a pymoab Core object
+    def create_group(self, group_name: str) -> DAGMCGroup:
+        """Create new group.
 
         Args:
-            core: Pymoab core.
+            group_name: Name assigned to the new group
+        Returns:
+            Group object.
         """
-        super().__init__(core)
+        handle = self._core.create_meshset()
+        self._core.tag_set_data(self.category_tag, handle, "Group")
+        self._core.tag_set_data(self.name_tag, handle, group_name)
+        return DAGMCGroup(self, handle)
 
     @property
-    def groups(self) -> dict[tuple[np.uint64, str], Range]:
-        """Get dictionary mapping a tuple of (group handle, group name) to the
-        corresponding range containing entity sets in the group."""
-
-        # Determine mapping of (group name, group entity) to volume handles
+    def groups(self) -> list[DAGMCGroup]:
+        """Get list of groups."""
         group_handles: Range = self._core.get_entities_by_type_and_tag(
             self.root_set,
             pymoab.types.MBENTITYSET,
             [self.category_tag],
             ["Group"],
         )
-        groups = {}
-        for group_handle in group_handles:
-            # Get list of volume handles
-            volume_handles: Range = self._core.get_entities_by_type_and_tag(
-                group_handle, pymoab.types.MBENTITYSET, [self.category_tag], ["Volume"]
-            )
-            group_name: str = self._core.tag_get_data(
-                self.name_tag, group_handle, flat=True
-            )[0]
-            groups[group_handle, group_name] = volume_handles
-        return groups
+        return [DAGMCGroup(self, handle) for handle in group_handles]
 
     @staticmethod
     def make_watertight(
