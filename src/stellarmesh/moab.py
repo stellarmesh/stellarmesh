@@ -460,7 +460,8 @@ class DAGMCModel(MOABModel):
                 else:
                     group = known_groups[vol_group]
 
-                group.add(volume_set_handle)
+                volume_set = EntitySet(model, volume_set_handle)
+                group.add(volume_set)
 
                 # Add surfaces to MOAB core, respecting surface sense.
                 # Logic: Gmsh meshes volumes in order. When it gets to the first volume,
