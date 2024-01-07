@@ -24,9 +24,9 @@ def test_volumes(model):
     assert isinstance(model.volumes[0], sm.DAGMCVolume)
 
 
-def test_id(model):
-    assert model.surfaces[0].id == 1
-    assert model.volumes[0].id == 0
+def test_global_id(model):
+    assert model.surfaces[0].global_id == 1
+    assert model.volumes[0].global_id == 0
 
 
 def test_adjacent_surfaces(model):
@@ -72,6 +72,7 @@ def test_material(model):
 
 def test_group(model):
     vol = model.volumes[0]
+    surf = model.surfaces[0]
 
     group = model.create_group("test_group")
     assert group.name == "test_group"
@@ -81,6 +82,36 @@ def test_group(model):
 
     group.add(vol)
     assert vol in group
+    assert group.volumes == [vol]
 
     group.remove(vol)
     assert vol not in group
+    assert group.volumes == []
+
+    group.add(surf)
+    assert group.surfaces == [surf]
+    group.remove(surf)
+    assert group.surfaces == []
+
+
+def test_repr(model):
+    surf = model.surfaces[0]
+    repr(surf)
+
+    vol = model.volumes[0]
+    repr(vol)
+
+    group = model.groups[0]
+    repr(group)
+
+
+def test_hash(model):
+    objects = {model.surfaces[0], model.volumes[0]}
+    assert len(objects) == 2
+
+
+def test_moabmodel_from_h5m():
+    solids = [bd.Solid.make_sphere(10.0)]
+    geom = sm.Geometry(solids, ["iron"])
+    mesh = sm.Mesh.from_geometry(geom, max_mesh_size=5, dim=3)
+    model = sm.MOABModel.from_mesh(mesh)
