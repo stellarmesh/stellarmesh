@@ -1,7 +1,7 @@
 """Stellarmesh MOAB/DAGMC models.
 
 name: moab.py
-author: Alex Koen
+author: Alex Koen, Paul Romano
 
 desc: MOABModel class represents a MOAB model.
 """
@@ -27,46 +27,58 @@ logger = logging.getLogger(__name__)
 
 
 class EntitySet:
+    """A MOAB entity set."""
+
     model: MOABModel
     handle: np.uint64
 
     def __init__(self, model: MOABModel, handle: np.uint64):
+        """Initialize entity set.
+
+        Args:
+            model: MOAB model
+            handle: Handle of entity set
+        """
         self.model = model
         self.handle = handle
 
     def __eq__(self, other) -> bool:
+        """Compare this entity with another."""
         return self.handle == other.handle
 
     def __hash__(self) -> int:
+        """Return hash of entity set's handle."""
         return hash(self.handle)
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}(id={self.id})>"
+        """String representation of entity set."""
+        return f"<{type(self).__name__}(id={self.global_id})>"
 
     @property
-    def id(self) -> int:
-        """Global ID"""
+    def global_id(self) -> int:
+        """Global ID."""
         model = self.model
         return model._core.tag_get_data(model.id_tag, self.handle, flat=True)[0]
 
-    @id.setter
-    def id(self, value: int):
+    @global_id.setter
+    def global_id(self, value: int):
         self.model._core.tag_set_data(self.model.id_tag, self.handle, value)
 
 
 class DAGMCGroup(EntitySet):
+    """A DAGMC Group (used to assign material metadata)."""
+
     def __contains__(self, entity_set: EntitySet) -> bool:
-        for vol in self.volumes:
-            if vol.handle == entity_set.handle:
-                return True
-        return False
+        """Determine whether group contains a given entity set."""
+        return any(vol.handle == entity_set.handle for vol in self.volumes)
 
     def __repr__(self) -> str:
+        """String representation of group."""
         return f"<DAGMCGroup: {self.name})>"
 
     @property
     def name(self) -> str:
-        """Name of the group"""
+        """Name of the group."""
         model = self.model
         return model._core.tag_get_data(model.name_tag, self.handle, flat=True)[0]
 
@@ -76,7 +88,7 @@ class DAGMCGroup(EntitySet):
 
     @property
     def volumes(self) -> list[DAGMCVolume]:
-        """Get list of volumes contained in this group"""
+        """Get list of volumes contained in this group."""
         handles: Range = self.model._core.get_entities_by_type_and_tag(
             self.handle, pymoab.types.MBENTITYSET, [self.model.category_tag], ["Volume"]
         )
@@ -84,7 +96,7 @@ class DAGMCGroup(EntitySet):
 
     @property
     def surfaces(self) -> list[DAGMCSurface]:
-        """Get list of surfaces contained in this group"""
+        """Get list of surfaces contained in this group."""
         handles: Range = self.model._core.get_entities_by_type_and_tag(
             self.handle,
             pymoab.types.MBENTITYSET,
@@ -148,7 +160,7 @@ class DAGMCVolume(EntitySet):
 
     @property
     def groups(self) -> list[DAGMCGroup]:
-        """Get list of groups containing this volume"""
+        """Get list of groups containing this volume."""
         return [group for group in self.model.groups if self in group]
 
     @property
@@ -157,8 +169,7 @@ class DAGMCVolume(EntitySet):
         for group in self.groups:
             if self in group and group.name.startswith("mat:"):
                 return group.name[4:]
-        else:
-            return None
+        return None
 
     @material.setter
     def material(self, name: str):
@@ -218,6 +229,7 @@ class MOABModel:
 
     @cached_property
     def category_tag(self) -> pymoab.tag.Tag:
+        """Category tag."""
         return self._core.tag_get_handle(
             pymoab.types.CATEGORY_TAG_NAME,
             pymoab.types.CATEGORY_TAG_SIZE,
@@ -228,6 +240,7 @@ class MOABModel:
 
     @cached_property
     def name_tag(self) -> pymoab.tag.Tag:
+        """Name tag."""
         return self._core.tag_get_handle(
             pymoab.types.NAME_TAG_NAME,
             pymoab.types.NAME_TAG_SIZE,
@@ -238,11 +251,13 @@ class MOABModel:
 
     @cached_property
     def id_tag(self) -> pymoab.tag.Tag:
+        """Global ID tag."""
         # Default tag, does not need to be created
         return self._core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
 
     @cached_property
     def geom_dimension_tag(self) -> pymoab.tag.Tag:
+        """Geometry dimension tag."""
         return self._core.tag_get_handle(
             pymoab.types.GEOM_DIMENSION_TAG_NAME,
             1,
@@ -253,6 +268,7 @@ class MOABModel:
 
     @cached_property
     def surf_sense_tag(self) -> pymoab.tag.Tag:
+        """Surface sense tag."""
         return self._core.tag_get_handle(
             "GEOM_SENSE_2",
             2,
@@ -263,6 +279,7 @@ class MOABModel:
 
     @cached_property
     def faceting_tol_tag(self) -> pymoab.tag.Tag:
+        """Faceting tolerance tag."""
         return self._core.tag_get_handle(
             "FACETING_TOL",
             1,
