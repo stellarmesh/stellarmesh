@@ -13,7 +13,7 @@ import tempfile
 import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Optional
+from typing import Optional, Union
 
 import gmsh
 import numpy as np
@@ -219,12 +219,17 @@ class MOABModel:
 
     _core: pymoab.core.Core
 
-    def __init__(self, core: pymoab.core.Core):
-        """Initialize model from a pymoab core object.
+    def __init__(self, core_or_file: Union[str, pymoab.core.Core]):
+        """Initialize model from a file or existing pymoab Core object.
 
         Args:
-            core: Pymoab core.
+            core_or_file: Filename or Core object.
         """
+        if isinstance(core_or_file, str):
+            core = pymoab.core.Core()
+            core.load_file(core_or_file)
+        else:
+            core = core_or_file
         self._core = core
 
     @cached_property
@@ -308,20 +313,6 @@ class MOABModel:
         )
 
     @classmethod
-    def from_h5m(cls, h5m_file: str) -> MOABModel:
-        """Initialize model from .h5m file.
-
-        Args:
-            h5m_file: File to load.
-
-        Returns:
-            Initialized model.
-        """
-        core = pymoab.core.Core()
-        core.load_file(h5m_file)
-        return cls(core)
-
-    @classmethod
     def from_mesh(cls, mesh: Mesh) -> MOABModel:
         """Create MOAB model from mesh.
 
@@ -331,12 +322,10 @@ class MOABModel:
         Returns:
             Initialized model.
         """
-        core = pymoab.core.Core()
         with tempfile.NamedTemporaryFile(suffix=".vtk", delete=True) as mesh_file:
             with mesh:
                 gmsh.write(mesh_file.name)
-            core.load_file(mesh_file.name)
-        return cls(core)
+            return cls(mesh_file.name)
 
     @classmethod
     def read_file(cls, h5m_file: str) -> MOABModel:
@@ -349,11 +338,11 @@ class MOABModel:
             Initialized model.
         """
         warnings.warn(
-            "The read_file method is deprecated. Use from_h5m instead.",
+            f"The read_file method is deprecated. Use {cls.__name__}(...) instead.",
             FutureWarning,
             stacklevel=2,
         )
-        return cls.from_h5m(h5m_file)
+        return cls(h5m_file)
 
     def write(self, filename: str):
         """Write MOAB model to .h5m, .vtk, or other file.
