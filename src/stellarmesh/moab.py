@@ -8,6 +8,7 @@ desc: MOABModel class represents a MOAB model.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import tempfile
 import warnings
@@ -23,6 +24,9 @@ from pymoab.rng import Range
 from .mesh import Mesh
 
 logger = logging.getLogger(__name__)
+
+# Type for arguments that accept file paths
+PathLike = Union[str, os.PathLike]
 
 
 class EntitySet:
@@ -264,15 +268,15 @@ class MOABModel:
 
     _core: pymoab.core.Core
 
-    def __init__(self, core_or_file: Union[str, pymoab.core.Core]):
+    def __init__(self, core_or_file: Union[PathLike, pymoab.core.Core]):
         """Initialize model from a file or existing pymoab Core object.
 
         Args:
-            core_or_file: Filename or Core object.
+            core_or_file: path-like or Core object.
         """
-        if isinstance(core_or_file, str):
+        if isinstance(core_or_file, PathLike):
             core = pymoab.core.Core()
-            core.load_file(core_or_file)
+            core.load_file(str(core_or_file))
         else:
             core = core_or_file
         self._core = core
@@ -373,7 +377,7 @@ class MOABModel:
             return cls(mesh_file.name)
 
     @classmethod
-    def read_file(cls, h5m_file: str) -> MOABModel:
+    def read_file(cls, h5m_file: PathLike) -> MOABModel:
         """Initialize model from .h5m file.
 
         Args:
@@ -389,13 +393,13 @@ class MOABModel:
         )
         return cls(h5m_file)
 
-    def write(self, filename: str):
+    def write(self, filename: PathLike):
         """Write MOAB model to .h5m, .vtk, or other file.
 
         Args:
             filename: Filename with format-appropriate extension.
         """
-        self._core.write_file(filename)
+        self._core.write_file(str(filename))
 
 
 class DAGMCModel(MOABModel):
@@ -457,8 +461,8 @@ class DAGMCModel(MOABModel):
 
     @staticmethod
     def make_watertight(
-        input_filename: str,
-        output_filename: str,
+        input_filename: PathLike,
+        output_filename: PathLike,
         binary_path: str = "make_watertight",
     ):
         """Make mesh watertight.
@@ -470,7 +474,7 @@ class DAGMCModel(MOABModel):
             "make_watertight".
         """
         subprocess.run(
-            [binary_path, input_filename, "-o", output_filename],
+            [binary_path, str(input_filename), "-o", str(output_filename)],
             check=True,
         )
 
