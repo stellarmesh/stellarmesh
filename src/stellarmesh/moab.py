@@ -65,6 +65,7 @@ class EntitySet:
 
     @property
     def category(self) -> str:
+        """Category for entity set."""
         return self._tag_get_data(self.model.category_tag)
 
     @category.setter
@@ -82,6 +83,7 @@ class EntitySet:
 
     @property
     def geom_dimension(self) -> int:
+        """Geometry dimension."""
         return self._tag_get_data(self.model.geom_dimension_tag)
 
     @geom_dimension.setter
@@ -183,7 +185,7 @@ class DAGMCSurface(EntitySet):
 
     @property
     def surf_sense(self) -> list[np.uint64]:
-        """Surface sense data"""
+        """Surface sense data."""
         return self.model._core.tag_get_data(
             self.model.surf_sense_tag, self.handle, flat=True
         )
@@ -410,6 +412,7 @@ class DAGMCModel(MOABModel):
 
         Args:
             group_name: Name assigned to the new group
+
         Returns:
             Group object.
         """
@@ -423,6 +426,7 @@ class DAGMCModel(MOABModel):
 
         Args:
             global_id: Global ID.
+
         Returns:
             Volume object.
         """
@@ -438,6 +442,7 @@ class DAGMCModel(MOABModel):
 
         Args:
             global_id: Global ID.
+
         Returns:
             Surface object.
         """
@@ -479,7 +484,7 @@ class DAGMCModel(MOABModel):
         )
 
     @classmethod
-    def from_mesh(  # noqa: PLR0915
+    def from_mesh(
         cls,
         mesh: Mesh,
     ) -> DAGMCModel:
