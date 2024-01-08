@@ -414,6 +414,36 @@ class DAGMCModel(MOABModel):
         self._core.tag_set_data(self.name_tag, handle, group_name)
         return DAGMCGroup(self, handle)
 
+    def create_volume(self, global_id: Optional[int] = None) -> DAGMCVolume:
+        """Create new volume.
+
+        Args:
+            global_id: Global ID.
+        Returns:
+            Volume object.
+        """
+        volume = DAGMCVolume(self, self._core.create_meshset())
+        volume.geom_dimension = 3
+        volume.category = "Volume"
+        if global_id is not None:
+            volume.global_id = global_id
+        return volume
+
+    def create_surface(self, global_id: Optional[int] = None) -> DAGMCSurface:
+        """Create new surface.
+
+        Args:
+            global_id: Global ID.
+        Returns:
+            Surface object.
+        """
+        surface = DAGMCSurface(self, self._core.create_meshset())
+        surface.geom_dimension = 2
+        surface.category = "Surface"
+        if global_id is not None:
+            surface.global_id = global_id
+        return surface
+
     @property
     def groups(self) -> list[DAGMCGroup]:
         """Get list of groups."""
@@ -458,7 +488,6 @@ class DAGMCModel(MOABModel):
         model = cls(core)
 
         known_surfaces: dict[int, DAGMCSurface] = {}
-        known_groups: dict[int, DAGMCGroup] = {}
 
         with mesh:
             # Warn about volume elements being discarded
@@ -470,10 +499,7 @@ class DAGMCModel(MOABModel):
             volume_tags = [v[1] for v in volume_dimtags]
             for i, volume_tag in enumerate(volume_tags):
                 # Add volume set
-                volume_set = DAGMCVolume(model, core.create_meshset())
-                volume_set.global_id = i
-                volume_set.geom_dimension = 3
-                volume_set.category = "Volume"
+                volume_set = model.create_volume(i)
 
                 # Add volume to its physical group, which stores metadata incl. material
                 # TODO(akoen): should this be a parent-child relationship?
@@ -484,16 +510,8 @@ class DAGMCModel(MOABModel):
                         f"Volume with tag {volume_tag} and global_id {i} "
                         f"belongs to {num_groups} physical groups, should be 1"
                     )
-
-                if (vol_group := vol_groups[0]) not in known_groups:
-                    mat_name = gmsh.model.get_physical_name(3, vol_group)
-                    group = model.create_group(mat_name)
-                    group.id = vol_group
-                    known_groups[vol_group] = group
-                else:
-                    group = known_groups[vol_group]
-
-                group.add(volume_set)
+                mat_name = gmsh.model.get_physical_name(3, vol_groups[0])
+                volume_set.material = mat_name[4:]
 
                 # Add surfaces to MOAB core, respecting surface sense.
                 # Logic: Gmsh meshes volumes in order. When it gets to the first volume,
@@ -506,13 +524,9 @@ class DAGMCModel(MOABModel):
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:
-                        surface = DAGMCSurface(model, core.create_meshset())
-                        known_surfaces[surface_tag] = surface
-
-                        surface.global_id = surface_tag
-                        surface.geom_dimension = 2
-                        surface.category = "Surface"
+                        surface = model.create_surface(surface_tag)
                         surface.forward_volume = volume_set
+                        known_surfaces[surface_tag] = surface
 
                         # Write surface to MOAB. STL export/import is very efficient.
                         with tempfile.NamedTemporaryFile(
