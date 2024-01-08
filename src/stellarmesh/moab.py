@@ -11,7 +11,6 @@ import logging
 import subprocess
 import tempfile
 import warnings
-from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Optional, Union
 
@@ -54,15 +53,36 @@ class EntitySet:
         """String representation of entity set."""
         return f"<{type(self).__name__}(id={self.global_id})>"
 
+    def _tag_get_data(self, tag: pymoab.tag.Tag):
+        return self.model._core.tag_get_data(tag, self.handle, flat=True)[0]
+
+    def _tag_set_data(self, tag: pymoab.tag.Tag, value):
+        self.model._core.tag_set_data(tag, self.handle, value)
+
+    @property
+    def category(self) -> str:
+        return self._tag_get_data(self.model.category_tag)
+
+    @category.setter
+    def category(self, category: str):
+        self._tag_set_data(self.model.category_tag, category)
+
     @property
     def global_id(self) -> int:
         """Global ID."""
-        model = self.model
-        return model._core.tag_get_data(model.id_tag, self.handle, flat=True)[0]
+        return self._tag_get_data(self.model.id_tag)
 
     @global_id.setter
     def global_id(self, value: int):
-        self.model._core.tag_set_data(self.model.id_tag, self.handle, value)
+        self._tag_set_data(self.model.id_tag, value)
+
+    @property
+    def geom_dimension(self) -> int:
+        return self._tag_get_data(self.model.geom_dimension_tag)
+
+    @geom_dimension.setter
+    def geom_dimension(self, dimension: int):
+        self._tag_set_data(self.model.geom_dimension_tag, dimension)
 
 
 class DAGMCGroup(EntitySet):
@@ -128,6 +148,48 @@ class DAGMCSurface(EntitySet):
     model: DAGMCModel
 
     @property
+    def forward_volume(self) -> Optional[DAGMCVolume]:
+        """Volume with forward sense with respect to the surface."""
+        try:
+            handle = self.surf_sense[0]
+        except RuntimeError:
+            return None
+        return DAGMCVolume(self.model, handle) if handle != 0 else None
+
+    @forward_volume.setter
+    def forward_volume(self, volume: DAGMCVolume):
+        reverse_vol = self.reverse_volume
+        reverse_handle = reverse_vol.handle if reverse_vol is not None else 0
+        self.surf_sense = [volume.handle, reverse_handle]
+
+    @property
+    def reverse_volume(self) -> Optional[DAGMCVolume]:
+        """Volume with reverse sense with respect to the surface."""
+        try:
+            handle = self.surf_sense[1]
+        except RuntimeError:
+            return None
+        return DAGMCVolume(self.model, handle) if handle != 0 else None
+
+    @reverse_volume.setter
+    def reverse_volume(self, volume: DAGMCVolume):
+        forward_vol = self.forward_volume
+        forward_handle = forward_vol.handle if forward_vol is not None else 0
+        self.surf_sense = [forward_handle, volume.handle]
+
+    @property
+    def surf_sense(self) -> list[np.uint64]:
+        """Surface sense data"""
+        return self.model._core.tag_get_data(
+            self.model.surf_sense_tag, self.handle, flat=True
+        )
+
+    @surf_sense.setter
+    def surf_sense(self, sense_data: list[np.uint64]):
+        sense_data = [np.uint64(x) for x in sense_data]
+        self._tag_set_data(self.model.surf_sense_tag, sense_data)
+
+    @property
     def adjacent_volumes(self) -> list[DAGMCVolume]:
         """Get adjacent volumes.
 
@@ -191,23 +253,6 @@ class DAGMCVolume(EntitySet):
             # Create new group, add name/category tags, add entity
             new_group = self.model.create_group(f"mat:{name}")
             new_group.add(self)
-
-
-@dataclass
-class _Surface:
-    """Internal class for surface sense handling."""
-
-    handle: np.uint64
-    forward_volume: np.uint64 = field(default=np.uint64(0))
-    reverse_volume: np.uint64 = field(default=np.uint64(0))
-
-    def sense_data(self) -> list[np.uint64]:
-        """Get MOAB tag sense data.
-
-        Returns:
-            Sense data.
-        """
-        return [self.forward_volume, self.reverse_volume]
 
 
 class MOABModel:
@@ -412,7 +457,7 @@ class DAGMCModel(MOABModel):
         core = pymoab.core.Core()
         model = cls(core)
 
-        known_surfaces: dict[int, _Surface] = {}
+        known_surfaces: dict[int, DAGMCSurface] = {}
         known_groups: dict[int, DAGMCGroup] = {}
 
         with mesh:
@@ -425,11 +470,10 @@ class DAGMCModel(MOABModel):
             volume_tags = [v[1] for v in volume_dimtags]
             for i, volume_tag in enumerate(volume_tags):
                 # Add volume set
-                volume_set_handle = core.create_meshset()
-                global_id = volume_set_handle
-                core.tag_set_data(model.id_tag, global_id, i)
-                core.tag_set_data(model.geom_dimension_tag, volume_set_handle, 3)
-                core.tag_set_data(model.category_tag, volume_set_handle, "Volume")
+                volume_set = DAGMCVolume(model, core.create_meshset())
+                volume_set.global_id = i
+                volume_set.geom_dimension = 3
+                volume_set.category = "Volume"
 
                 # Add volume to its physical group, which stores metadata incl. material
                 # TODO(akoen): should this be a parent-child relationship?
@@ -437,7 +481,7 @@ class DAGMCModel(MOABModel):
                 vol_groups = gmsh.model.get_physical_groups_for_entity(3, volume_tag)
                 if (num_groups := len(vol_groups)) != 1:
                     raise ValueError(
-                        f"Volume with tag {volume_tag} and global_id {global_id} "
+                        f"Volume with tag {volume_tag} and global_id {i} "
                         f"belongs to {num_groups} physical groups, should be 1"
                     )
 
@@ -449,7 +493,6 @@ class DAGMCModel(MOABModel):
                 else:
                     group = known_groups[vol_group]
 
-                volume_set = EntitySet(model, volume_set_handle)
                 group.add(volume_set)
 
                 # Add surfaces to MOAB core, respecting surface sense.
@@ -463,19 +506,13 @@ class DAGMCModel(MOABModel):
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:
-                        surface_set_handle = core.create_meshset()
-                        surface = _Surface(handle=surface_set_handle)
-                        surface.forward_volume = volume_set_handle
+                        surface = DAGMCSurface(model, core.create_meshset())
                         known_surfaces[surface_tag] = surface
 
-                        core.tag_set_data(model.id_tag, surface.handle, surface_tag)
-                        core.tag_set_data(model.geom_dimension_tag, surface.handle, 2)
-                        core.tag_set_data(model.category_tag, surface.handle, "Surface")
-                        core.tag_set_data(
-                            model.surf_sense_tag,
-                            surface.handle,
-                            surface.sense_data(),
-                        )
+                        surface.global_id = surface_tag
+                        surface.geom_dimension = 2
+                        surface.category = "Surface"
+                        surface.forward_volume = volume_set
 
                         # Write surface to MOAB. STL export/import is very efficient.
                         with tempfile.NamedTemporaryFile(
@@ -484,20 +521,15 @@ class DAGMCModel(MOABModel):
                             group_tag = gmsh.model.add_physical_group(2, [surface_tag])
                             gmsh.write(stl_file.name)
                             gmsh.model.remove_physical_groups([(2, group_tag)])
-                            core.load_file(stl_file.name, surface_set_handle)
+                            core.load_file(stl_file.name, surface.handle)
 
                     else:
                         # Surface already has a forward volume, so this must be the
                         # reverse volume.
                         surface = known_surfaces[surface_tag]
-                        surface.reverse_volume = volume_set_handle
-                        core.tag_set_data(
-                            model.surf_sense_tag,
-                            surface.handle,
-                            surface.sense_data(),
-                        )
+                        surface.reverse_volume = volume_set
 
-                    core.add_parent_child(volume_set_handle, surface.handle)
+                    core.add_parent_child(volume_set.handle, surface.handle)
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
