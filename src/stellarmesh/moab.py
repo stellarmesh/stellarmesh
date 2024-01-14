@@ -276,7 +276,7 @@ class MOABModel:
         Args:
             core_or_file: path-like or Core object.
         """
-        if isinstance(core_or_file, PathLike):
+        if isinstance(core_or_file, (str, os.PathLike)):
             core = pymoab.core.Core()
             core.load_file(str(core_or_file))
         else:
