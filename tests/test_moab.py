@@ -6,21 +6,22 @@ from pymoab.rng import Range
 
 @pytest.fixture(scope="module")
 def model():
-    solids = [bd.Solid.make_sphere(10.0)]
-    geom = sm.Geometry(solids, ["iron"])
+    solid1 = bd.Solid.make_sphere(10.0)
+    solid2 = solid1.faces()[0].thicken(10.0)
+    geom = sm.Geometry([solid1, solid2], ["iron", "iron"])
     mesh = sm.Mesh.from_geometry(geom, max_mesh_size=5, dim=2)
     return sm.DAGMCModel.from_mesh(mesh)
 
 
 def test_surfaces(model):
     assert isinstance(model.surfaces, list)
-    assert len(model.surfaces) == 1
+    assert len(model.surfaces) == 2
     assert isinstance(model.surfaces[0], sm.DAGMCSurface)
 
 
 def test_volumes(model):
     assert isinstance(model.volumes, list)
-    assert len(model.volumes) == 1
+    assert len(model.volumes) == 2
     assert isinstance(model.volumes[0], sm.DAGMCVolume)
 
 
@@ -39,8 +40,10 @@ def test_adjacent_surfaces(model):
 def test_adjacent_volumes(model):
     surf = model.surfaces[0]
     volumes = surf.adjacent_volumes
-    assert len(volumes) == 1
-    assert volumes == [model.volumes[0]]
+    assert len(volumes) == 2
+    assert volumes == [model.volumes[0], model.volumes[1]]
+    assert surf.forward_volume == model.volumes[0]
+    assert surf.reverse_volume == model.volumes[1]
 
 
 def test_tets(model):
