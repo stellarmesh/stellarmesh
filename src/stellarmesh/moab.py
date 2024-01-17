@@ -416,10 +416,11 @@ class DAGMCModel(MOABModel):
         Returns:
             Group object.
         """
-        handle = self._core.create_meshset()
-        self._core.tag_set_data(self.category_tag, handle, "Group")
-        self._core.tag_set_data(self.name_tag, handle, group_name)
-        return DAGMCGroup(self, handle)
+        group = DAGMCGroup(self, self._core.create_meshset())
+        group.geom_dimension = 4
+        group.category = "Group"
+        group.name = group_name
+        return group
 
     def create_volume(self, global_id: Optional[int] = None) -> DAGMCVolume:
         """Create new volume.
