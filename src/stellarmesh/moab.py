@@ -256,8 +256,11 @@ class DAGMCVolume(EntitySet):
                 group.remove(self)
 
         if not existing_group:
-            # Create new group, add name/category tags, add entity
+            # Create new group and add entity
             new_group = self.model.create_group(f"mat:{name}")
+            new_group.global_id = (
+                max((g.global_id for g in self.model.groups), default=0) + 1
+            )
             new_group.add(self)
 
 
