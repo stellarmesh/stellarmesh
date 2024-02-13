@@ -157,10 +157,7 @@ class DAGMCSurface(EntitySet):
     @property
     def forward_volume(self) -> Optional[DAGMCVolume]:
         """Volume with forward sense with respect to the surface."""
-        try:
-            return self.surf_sense[0]
-        except RuntimeError:
-            return None
+        return self.surf_sense[0]
 
     @forward_volume.setter
     def forward_volume(self, volume: DAGMCVolume):
@@ -169,10 +166,7 @@ class DAGMCSurface(EntitySet):
     @property
     def reverse_volume(self) -> Optional[DAGMCVolume]:
         """Volume with reverse sense with respect to the surface."""
-        try:
-            return self.surf_sense[1]
-        except RuntimeError:
-            return None
+        return self.surf_sense[1]
 
     @reverse_volume.setter
     def reverse_volume(self, volume: DAGMCVolume):
@@ -181,9 +175,13 @@ class DAGMCSurface(EntitySet):
     @property
     def surf_sense(self) -> list[Optional[DAGMCVolume]]:
         """Surface sense data."""
-        handles = self.model._core.tag_get_data(
-            self.model.surf_sense_tag, self.handle, flat=True
-        )
+        try:
+            handles = self.model._core.tag_get_data(
+                self.model.surf_sense_tag, self.handle, flat=True
+            )
+        except RuntimeError:
+            return [None, None]
+
         return [
             DAGMCVolume(self.model, handle) if handle != 0 else None
             for handle in handles
