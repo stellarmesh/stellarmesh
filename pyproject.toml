@@ -1,7 +1,7 @@
 [project]
 name = "stellarmesh"
 version = "0.3.1"
-authors = [{ name = "Alex Keon" }]
+authors = [{ name = "Alex Koen" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"
 requires-python = ">=3.9"
