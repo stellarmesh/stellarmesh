@@ -2,15 +2,14 @@
 <img src="https://github.com/Thea-Energy/stellarmesh/raw/main/doc/logo.png" width="80%">
 </p>
 
-:warning: This library is in development. Expect breaking changes and bugs, and feel welcome to contribute.
-
-:warning: Use MOAB version <= 5.3.1. Later versions suffer from undocumented transport errors in DAGMC.
+:warning: Stellarmesh is now a community project. Breaking changes are expected until version 1.0
 
 :warning: See [logging](#logging) to enable logging output when using Jupyter.
 
-Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics workflows, building on other libraries such as [cad-to-dagmc](https://github.com/fusion-energy/cad_to_dagmc) and [cad-to-openmc](https://github.com/openmsr/CAD_to_OpenMC). The goal is to reach feature parity with the [Cubit plugin](https://github.com/svalinn/Cubit-plugin) to enable a fully-featured and open-source workflow.
+Stellarmesh is a meshing library for nuclear workflows. Principally, it supports the creation of DAGMC geometry from CAD models. Stellarmesh is developed by the original authors of [Thea-Energy/stellarmesh](https://github.com/Thea-Energy/stellarmesh), [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc), and [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC).
 
-**Progress**:
+
+**Features**:
 
 - [x] Import of [CadQuery](https://github.com/CadQuery/cadquery), [build123d](https://github.com/gumyr/build123d), STEP and BREP geometry
 - [x] Correct implementation of surface-sense
@@ -18,6 +17,8 @@ Stellarmesh is a Gmsh wrapper and DAGMC geometry creator for fusion neutronics w
 - [x] Mesh refinement
 - [x] Automated testing and integration
 - [x] Programatic manipulation of .h5m tags e.g. materials
+
+See the project [Roadmap](https://github.com/orgs/stellarmesh/projects/1).
 
 # Contents
 - [Contents](#contents)
@@ -167,19 +168,3 @@ and consult the `Mesh.refine` and [mmgs](https://www.mmgtools.org/mmg-remesher-t
 </p>
 
 Many thanks to [Erik B. Knudsen](https://github.com/ebknudsen) for his work on remeshing for [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC).
-
-# Comparison to other libraries
-
-|| Stellarmesh | [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc) |  [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC) | Cubit |
-|---| --- | --- | --- | --- |
-| Developer | Thea Energy | Jonathan Shimwell | Erik B. Knudsen | Coreform
-| Meshing backend | Gmsh | Gmsh | Gmsh/CQ |  Cubit |
-| In development | ✓ | ✓ | ✓ | ✓ |
-| Open-source | ✓ | ✓ | ✓ |   |
-| Surface-sense handling | ✓ | ✓ | <sup>1</sup> | ✓ |
-| Mesh refinement | ✓ |   | ✓ | ✓ |
-| Manipulation of .h5m files | ✓ |   | | |
-
-<em>Note: Please file an issue if this table is out-of-date.</em>
-
-<sup>1</sup> In development on a personal branch
