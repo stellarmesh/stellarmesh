@@ -1,6 +1,6 @@
 -e .
 pytest
-build123d @ git+https://github.com/gumyr/build123d
+build123d
 cadquery
 black
 ruff
