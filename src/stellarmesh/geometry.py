@@ -46,7 +46,7 @@ class Geometry:
         if len(material_names) != len(solids):
             raise ValueError(
                 f"Number of material names ({len(material_names)}) must match length of"
-                + " solids ({len(solids)})."
+                + f" solids ({len(solids)})."
             )
 
         self.solids = []
