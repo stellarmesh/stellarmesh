@@ -1,4 +1,5 @@
 """Test of a simple layered torus. Outputs refined mesh to refined.msh."""
+
 import logging
 
 import build123d as bd

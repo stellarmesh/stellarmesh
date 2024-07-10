@@ -5,6 +5,7 @@ author: Alex Koen
 
 desc: Geometry class represents a CAD geometry to be meshed.
 """
+
 from __future__ import annotations
 
 import logging
