@@ -4,7 +4,7 @@ version = "0.3.1"
 authors = [{ name = "Alex Koen" }]
 description = "GMSH wrapper and DAGMC geometry creator."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["gmsh", "numpy", "pymoab", "pymmg", "cadquery-ocp"]
 
 [build-system]
@@ -35,13 +35,10 @@ ignore = [
     "TRY003",  # Exception with string (vs. defining custom exception)
     "PLR2004", # Magic number
 ]
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.pydocstyle]
 convention = "google"
 
 [tool.pyright]
-pythonVersion = "3.9"
-
-[tool.black]
-target-version = ["py39", "py310", "py311"]
+pythonVersion = "3.10"
