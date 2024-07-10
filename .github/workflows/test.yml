@@ -45,6 +45,6 @@ jobs:
       - name: Test with pytest
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         env:
-          OPENMC_CROSS_SECTIONS: ./cross_sections.xml
+          OPENMC_CROSS_SECTIONS: /home/runner/work/stellarmesh/stellarmesh/cross_sections.xml
         run: |
           python -m pytest --log-cli-level=INFO
