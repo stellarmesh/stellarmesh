@@ -3,3 +3,4 @@
 pytest
 build123d
 cadquery
+openmc_data_downloader
