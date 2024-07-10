@@ -40,7 +40,7 @@ pip install stellarmesh
 or install the development version with:
 
 ```sh
-pip install https://github.com/Thea-Energy/stellarmesh.git
+pip install build123d
 ```
 
 *Note: Stellarmesh requires an installation of [MOAB](https://bitbucket.org/fathomteam/moab) with pymoab, which is not available on PyPi and must be installed either from source or using Conda.*
