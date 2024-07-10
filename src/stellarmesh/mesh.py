@@ -5,6 +5,7 @@ author: Alex Koen
 
 desc: Mesh class wraps Gmsh functionality for geometry meshing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -100,7 +101,7 @@ class Mesh:
             gmsh.model.add("stellarmesh_model")
 
             material_solid_map = {}
-            for s, m in zip(geometry.solids, geometry.material_names):
+            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
@@ -255,8 +256,10 @@ class Mesh:
             New refined mesh with filename <original-filename>.refined.msh.
         """
         with (
-            self
-        ), self._stash_physical_groups(), tempfile.TemporaryDirectory() as tmpdir:
+            self,
+            self._stash_physical_groups(),
+            tempfile.TemporaryDirectory() as tmpdir,
+        ):
             filename = f"{tmpdir}/model.mesh"
             gmsh.write(filename)
 
