@@ -44,5 +44,7 @@ jobs:
 
       - name: Test with pytest
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
+        env:
+          OPENMC_CROSS_SECTIONS: ./cross_sections.xml
         run: |
-          python -m pytest
+          python -m pytest --log-cli-level=INFO
