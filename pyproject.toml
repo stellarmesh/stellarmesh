@@ -12,6 +12,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
 select = [
     "E",
     "W",
@@ -35,10 +38,8 @@ ignore = [
     "TRY003",  # Exception with string (vs. defining custom exception)
     "PLR2004", # Magic number
 ]
-target-version = "py310"
+pydocstyle.convention = "google"
 
-[tool.ruff.pydocstyle]
-convention = "google"
 
 [tool.pyright]
 pythonVersion = "3.10"

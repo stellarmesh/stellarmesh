@@ -1,4 +1,5 @@
 """Making the stellarmesh logo."""
+
 import logging
 
 import build123d as bd
