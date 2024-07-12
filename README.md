@@ -30,7 +30,6 @@ See the project [Roadmap](https://github.com/orgs/stellarmesh/projects/1).
     - [Other](#other)
   - [Logging](#logging)
   - [Mesh refinement](#mesh-refinement)
-- [Comparison to other libraries](#comparison-to-other-libraries)
 
 # Installation
 ```sh
@@ -40,7 +39,7 @@ pip install stellarmesh
 or install the development version with:
 
 ```sh
-pip install build123d
+pip install git+https://github.com/stellarmesh/stellarmesh
 ```
 
 *Note: Stellarmesh requires an installation of [MOAB](https://bitbucket.org/fathomteam/moab) with pymoab, which is not available on PyPi and must be installed either from source or using Conda.*
@@ -52,7 +51,7 @@ Stellarmesh supports both [build123d](https://github.com/gumyr/build123d) (recom
 The included examples use build123d. To install, run:
 
 ```python
-pip install git+https://github.com/gumyr/build123d
+pip install build123d
 ```
 
 For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
