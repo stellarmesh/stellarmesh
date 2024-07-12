@@ -1,7 +1,7 @@
 """Continuous integration tests with OpenMC."""
 
 import logging
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
 from typing import Sequence, Type
@@ -18,7 +18,7 @@ RELATIVE_TOLERANCE_PERCENT = 2.5 / 100
 logger = logging.getLogger(__name__)
 
 
-class Model(metaclass=ABCMeta):
+class Model(ABC):
     @cached_property
     @abstractmethod
     def materials(self) -> openmc.Materials:
@@ -76,17 +76,12 @@ class NestedSpheres(Model):
         return openmc.Materials([mat1, mat2])
 
     def tallies(self):
-        mat1_filter = openmc.MaterialFilter(self.materials[0])
-        tally1 = openmc.Tally(name="mat1_flux_tally")
-        tally1.filters = [mat1_filter]
-        tally1.scores = ["flux"]
+        mat_filter = openmc.MaterialFilter(self.materials)
+        tally = openmc.Tally(name="flux_tally")
+        tally.filters = [mat_filter]
+        tally.scores = ["flux"]
 
-        mat2_filter = openmc.MaterialFilter(self.materials[1])
-        tally2 = openmc.Tally(name="mat2_flux_tally")
-        tally2.filters = [mat2_filter]
-        tally2.scores = ["flux"]
-
-        return openmc.Tallies([tally1, tally2])
+        return openmc.Tallies([tally])
 
     def source(self):
         source = openmc.IndependentSource()
@@ -100,11 +95,9 @@ class NestedSpheres(Model):
         surface2 = openmc.Sphere(r=self.radius1 + self.radius2, boundary_type="vacuum")
         region1 = -surface1
         region2 = +surface1 & -surface2
-        cell1 = openmc.Cell(region=region1)
-        cell1.fill = self.materials[0]
-        cell2 = openmc.Cell(region=region2)
-        cell2.fill = self.materials[1]
-        csg_geometry = openmc.Geometry(openmc.Universe(cells=[cell1, cell2]))
+        cell1 = openmc.Cell(fill=self.materials[0], region=region1)
+        cell2 = openmc.Cell(fill=self.materials[1], region=region2)
+        csg_geometry = openmc.Geometry([cell1, cell2])
         return openmc.Model(geometry=csg_geometry)
 
     def dagmc(self):
@@ -116,8 +109,8 @@ class NestedSpheres(Model):
 class Torus(Model):
     """Torus."""
 
-    major_radius: float = 10
-    minor_radius: float = 1
+    major_radius: float = 10.0
+    minor_radius: float = 1.0
 
     @cached_property
     def materials(self):
@@ -127,12 +120,12 @@ class Torus(Model):
         return openmc.Materials([mat1])
 
     def tallies(self):
-        mat1_filter = openmc.MaterialFilter(self.materials[0])
-        tally1 = openmc.Tally(name="mat1_flux_tally")
-        tally1.filters = [mat1_filter]
-        tally1.scores = ["flux"]
+        mat_filter = openmc.MaterialFilter(self.materials[0])
+        tally = openmc.Tally(name="mat1_flux_tally")
+        tally.filters = [mat_filter]
+        tally.scores = ["flux"]
 
-        return openmc.Tallies([tally1])
+        return openmc.Tallies([tally])
 
     def source(self):
         source = openmc.IndependentSource()
@@ -151,10 +144,8 @@ class Torus(Model):
             c=self.minor_radius,
             boundary_type="vacuum",
         )
-        region = -surface
-        cell = openmc.Cell(region=region)
-        cell.fill = self.materials[0]
-        csg_geometry = openmc.Geometry(openmc.Universe(cells=[cell]))
+        cell = openmc.Cell(fill=self.materials[0], region=-surface)
+        csg_geometry = openmc.Geometry([cell])
         return openmc.Model(geometry=csg_geometry)
 
     def dagmc(self):
