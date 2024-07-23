@@ -13,5 +13,9 @@ def test_mesh_geometry_2d(geom_bd_sphere):
     sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=2)
 
 
+def test_threads(geom_bd_sphere):
+    sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=2, num_threads=4)
+
+
 def test_mesh_geometry_3d(geom_bd_sphere):
     sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=3)
