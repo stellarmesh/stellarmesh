@@ -77,12 +77,14 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def from_geometry(
+    def from_geometry(  # noqa: PLR0913
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
         dim: int = 2,
+        *,
+        num_threads: Optional[int] = None,
     ) -> Mesh:
         """Mesh solids with Gmsh.
 
@@ -94,10 +96,15 @@ class Mesh:
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
             dim: Generate a mesh up to this dimension. Defaults to 2.
+            num_threads: Max number of threads to use when GMSH compiled with OpenMP
+            support. 0 for system default i.e. OMP_NUM_THREADS. Defaults to None.
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
         with cls() as mesh:
+            if num_threads:
+                gmsh.option.set_number("General.NumThreads", num_threads)
+
             gmsh.model.add("stellarmesh_model")
 
             material_solid_map = {}
