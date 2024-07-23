@@ -77,7 +77,7 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def from_geometry(  # noqa: PLR0913
+    def from_geometry(
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
