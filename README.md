@@ -157,7 +157,8 @@ logging.getLogger("stellarmesh").setLevel(logging.INFO)
 ```
 
 ## Mesh refinement
-*Note: given CAD geometry, Gmsh often produces high-quality meshes that do not benefit from remeshing.*
+> [!NOTE]
+> Given CAD geometry, Gmsh often produces high-quality meshes that do not benefit from remeshing.
 
 Stellarmesh supports mesh refinement using the [mmg](https://www.mmgtools.org/) library. Refine a mesh with:
 
@@ -177,3 +178,8 @@ and consult the `Mesh.refine` and [mmgs](https://www.mmgtools.org/mmg-remesher-t
 </p>
 
 Many thanks to [Erik B. Knudsen](https://github.com/ebknudsen) for his work on remeshing for [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC).
+
+# Acknowledgements
+Stellarmesh is originally a project of Thea Energy, who are building the world's first planar coil stellarator.
+
+[<img width="200" src="https://github.com/user-attachments/assets/37b9ba1c-b22c-4837-b226-a6212854127e">](https://thea.energy/)
