@@ -240,6 +240,71 @@ class OCCSurfaceOptions:
 class SurfaceMesh(Mesh):
     """A surface mesh."""
 
+    @staticmethod
+    def _mesh_gmsh(options: GMSHSurfaceOptions | OCCSurfaceOptions):
+        gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
+        gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
+        gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+        gmsh.model.mesh.generate(2)
+
+    @staticmethod
+    def _mesh_occ(geometry: Geometry, options: GMSHSurfaceOptions | OCCSurfaceOptions):
+        cmp = TopoDS_Compound()
+        cmp_builder = TopoDS_Builder()
+        cmp_builder.MakeCompound(cmp)
+
+        for shape in geometry.solids:
+            cmp_builder.Add(cmp, shape)
+
+        params = options.build_params()  # type: ignore
+
+        BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
+
+        loc = TopLoc_Location()
+        explorer = TopExp_Explorer(cmp, TopAbs_FACE)
+        faces = []
+        while explorer.More():
+            face = TopoDS.Face_s(explorer.Current())
+            faces.append(face)
+            explorer.Next()
+
+        # ASSUMPTION: The order of faces returned by TopExp_Explorer is the
+        # same as the order of Gmsh surfaces.
+        faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
+        surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
+        for face, surface_tag in zip(faces, surface_tags, strict=True):
+            ocp_mesh_vertices = []
+            triangles = []
+            offset = 0
+
+            poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
+            trsf = loc.Transformation()
+            # Store vertices
+            node_count = poly_triangulation.NbNodes()
+            for j in range(1, node_count + 1):
+                gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
+                pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
+                ocp_mesh_vertices.extend(pnt)
+
+            # Store triangles
+            order = [1, 2, 3]
+            for tri in poly_triangulation.Triangles():
+                triangles.extend([tri.Value(i) + offset - 1 for i in order])
+            offset += node_count
+            gmsh.model.mesh.add_nodes(
+                2,
+                surface_tag,
+                [],
+                ocp_mesh_vertices,
+            )
+            nodes, _, _ = gmsh.model.mesh.get_nodes(
+                2, surface_tag, includeBoundary=True
+            )
+            node_start = nodes[0]
+            gmsh.model.mesh.add_elements_by_type(
+                surface_tag, 2, [], [node_start + i for i in triangles]
+            )
+
     @classmethod
     def from_geometry(
         cls, geometry: Geometry, options: GMSHSurfaceOptions | OCCSurfaceOptions
@@ -276,67 +341,9 @@ class SurfaceMesh(Mesh):
             # TODO(akoen): This should be an isinstance call but makes it hard for devel
             if type(options).__name__ == GMSHSurfaceOptions.__name__:
                 # GMSH Meshing
-                gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
-                gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
-                gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
-                gmsh.model.mesh.generate(2)
+                cls._mesh_gmsh(options)
             elif type(options).__name__ == OCCSurfaceOptions.__name__:
-                # OCC Meshing
-                cmp = TopoDS_Compound()
-                cmp_builder = TopoDS_Builder()
-                cmp_builder.MakeCompound(cmp)
-
-                for shape in geometry.solids:
-                    cmp_builder.Add(cmp, shape)
-
-                params = options.build_params()  # type: ignore
-
-                BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
-
-                loc = TopLoc_Location()
-                explorer = TopExp_Explorer(cmp, TopAbs_FACE)
-                faces = []
-                while explorer.More():
-                    face = TopoDS.Face_s(explorer.Current())
-                    faces.append(face)
-                    explorer.Next()
-
-                # ASSUMPTION: The order of faces returned by TopExp_Explorer is the
-                # same as the order of Gmsh surfaces.
-                faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
-                surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
-                for face, surface_tag in zip(faces, surface_tags, strict=True):
-                    ocp_mesh_vertices = []
-                    triangles = []
-                    offset = 0
-
-                    poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
-                    trsf = loc.Transformation()
-                    # Store vertices
-                    node_count = poly_triangulation.NbNodes()
-                    for j in range(1, node_count + 1):
-                        gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
-                        pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
-                        ocp_mesh_vertices.extend(pnt)
-
-                    # Store triangles
-                    order = [1, 2, 3]
-                    for tri in poly_triangulation.Triangles():
-                        triangles.extend([tri.Value(i) + offset - 1 for i in order])
-                    offset += node_count
-                    gmsh.model.mesh.add_nodes(
-                        2,
-                        surface_tag,
-                        [],
-                        ocp_mesh_vertices,
-                    )
-                    nodes, _, _ = gmsh.model.mesh.get_nodes(
-                        2, surface_tag, includeBoundary=True
-                    )
-                    node_start = nodes[0]
-                    gmsh.model.mesh.add_elements_by_type(
-                        surface_tag, 2, [], [node_start + i for i in triangles]
-                    )
+                cls._mesh_occ(geometry, options)
             else:
                 assert_never(options)
 
