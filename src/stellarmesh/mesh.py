@@ -25,7 +25,7 @@ from OCP.IMeshTools import (
     IMeshTools_MeshAlgoType_Watson,
     IMeshTools_Parameters,
 )
-from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED
+from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
@@ -293,53 +293,50 @@ class SurfaceMesh(Mesh):
 
                 BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
-                solid_tags = [e[1] for e in gmsh.model.get_entities(3)]
-                for solid, solid_tag in zip(geometry.solids, solid_tags, strict=True):
-                    adjacencies = gmsh.model.get_adjacencies(3, solid_tag)
-                    surface_tags = adjacencies[1]
+                loc = TopLoc_Location()
+                explorer = TopExp_Explorer(cmp, TopAbs_FACE)
+                faces = []
+                while explorer.More():
+                    face = TopoDS.Face_s(explorer.Current())
+                    faces.append(face)
+                    explorer.Next()
 
+                # ASSUMPTION: The order of faces returned by TopExp_Explorer is the
+                # same as the order of Gmsh surfaces.
+                faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
+                surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
+                for face, surface_tag in zip(faces, surface_tags, strict=True):
                     ocp_mesh_vertices = []
                     triangles = []
                     offset = 0
 
-                    # Get solid faces
-                    loc = TopLoc_Location()
-                    explorer = TopExp_Explorer(solid, TopAbs_FACE)
-                    faces = []
-                    while explorer.More():
-                        face = TopoDS.Face_s(explorer.Current())
-                        faces.append(face)
-                        explorer.Next()
+                    poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
+                    trsf = loc.Transformation()
+                    # Store vertices
+                    node_count = poly_triangulation.NbNodes()
+                    for j in range(1, node_count + 1):
+                        gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
+                        pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
+                        ocp_mesh_vertices.extend(pnt)
 
-                    for i, face in enumerate(faces):
-                        poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
-                        trsf = loc.Transformation()
-                        # Store the vertices in the triangulated face
-                        node_count = poly_triangulation.NbNodes()
-                        for j in range(1, node_count + 1):
-                            gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
-                            pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
-                            ocp_mesh_vertices.extend(pnt)
-
-                        # Store the triangles from the triangulated faces
-                        facet_reversed = face.Orientation() == TopAbs_REVERSED
-                        order = [1, 3, 2] if facet_reversed else [1, 2, 3]
-                        for tri in poly_triangulation.Triangles():
-                            triangles.extend([tri.Value(i) + offset - 1 for i in order])
-                        offset += node_count
-                        gmsh.model.mesh.add_nodes(
-                            2,
-                            surface_tags[i],
-                            [],
-                            ocp_mesh_vertices,
-                        )
-                        nodes, _, _ = gmsh.model.mesh.get_nodes(
-                            2, surface_tags[i], includeBoundary=True
-                        )
-                        node_start = nodes[0]
-                        gmsh.model.mesh.add_elements_by_type(
-                            surface_tags[i], 2, [], [node_start + i for i in triangles]
-                        )
+                    # Store triangles
+                    order = [1, 2, 3]
+                    for tri in poly_triangulation.Triangles():
+                        triangles.extend([tri.Value(i) + offset - 1 for i in order])
+                    offset += node_count
+                    gmsh.model.mesh.add_nodes(
+                        2,
+                        surface_tag,
+                        [],
+                        ocp_mesh_vertices,
+                    )
+                    nodes, _, _ = gmsh.model.mesh.get_nodes(
+                        2, surface_tag, includeBoundary=True
+                    )
+                    node_start = nodes[0]
+                    gmsh.model.mesh.add_elements_by_type(
+                        surface_tag, 2, [], [node_start + i for i in triangles]
+                    )
             else:
                 assert_never(options)
 
