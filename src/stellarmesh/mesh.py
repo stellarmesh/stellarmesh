@@ -270,13 +270,8 @@ class SurfaceMesh(Mesh):
             faces.append(face)
             explorer.Next()
 
-        # ASSUMPTION: The order of faces returned by TopExp_Explorer is the
-        # same as the order of Gmsh surfaces. This logic is at
+        # NOTE: GMSH import logic is at
         # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
-        # forward_faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
-        face_orientations = [f.Orientation() for f in faces]
-        # surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
-        # for face, surface_tag in zip(, surface_tags, strict=True):
         known_surface_tags = []
         for face in faces:
             dim_tags = gmsh.model.occ.import_shapes_native_pointer(face._address())
@@ -353,7 +348,6 @@ class SurfaceMesh(Mesh):
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
-            # TODO(akoen): This should be an isinstance call but makes it hard for devel
             if type(options).__name__ == GMSHSurfaceOptions.__name__:
                 # GMSH Meshing
                 cls._mesh_gmsh(options)
