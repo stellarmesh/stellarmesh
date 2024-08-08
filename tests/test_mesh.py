@@ -54,3 +54,11 @@ def test_mesh_geom_bd_imprintedboxes(geom_bd_imprintedboxes):
     with mesh:
         surface_tags = gmsh.model.get_entities(2)
         assert len(surface_tags) == 13
+
+
+def test_mesh_volume_bd_imprintedboxes(geom_bd_imprintedboxes):
+    mesh = sm.VolumeMesh.from_geometry(
+        geom_bd_imprintedboxes, sm.GmshVolumeOptions(5, 5)
+    )
+
+    mesh.write("out.msh")

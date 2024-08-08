@@ -212,8 +212,8 @@ class GmshSurfaceOptions(GmshMeshingOptions):
         algorithm: Gmsh meshing algorithm.
     """
 
-    min_mesh_size: float = 50
-    max_mesh_size: float = 50
+    min_mesh_size: float
+    max_mesh_size: float
     algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
 
 
@@ -225,6 +225,8 @@ class GmshVolumeOptions(GmshMeshingOptions):
         algorithm: Gmsh volume meshing algorithm.
     """
 
+    min_mesh_size: float
+    max_mesh_size: float
     algorithm: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
 
 
@@ -486,3 +488,50 @@ class SurfaceMesh(Mesh):
             gmsh.option.set_number("Mesh.SaveAll", 1)
             gmsh.write(new_filename)
             return type(self)(new_filename)
+
+
+class VolumeMesh(Mesh):
+    """Volume Mesh."""
+
+    @classmethod
+    def from_geometry(
+        cls, geometry: Geometry, options: GmshVolumeOptions
+    ) -> VolumeMesh:
+        """Mesh solids with Gmsh.
+
+        See Gmsh documentation on mesh sizes:
+        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
+
+        Args:
+            geometry: Geometry to be meshed.
+            options: Meshing options.
+        """
+        with cls() as mesh:
+            # TODO(akoen): this is not DRY
+            gmsh.model.add("stellarmesh_model")
+
+            material_solid_map = {}
+            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
+                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
+                if dim_tags[0][0] != 3:
+                    raise TypeError("Importing non-solid geometry.")
+
+                solid_tag = dim_tags[0][1]
+                if m not in material_solid_map:
+                    material_solid_map[m] = [solid_tag]
+                else:
+                    material_solid_map[m].append(solid_tag)
+
+            gmsh.model.occ.synchronize()
+
+            for material, solid_tags in material_solid_map.items():
+                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
+
+            assert gmsh.is_initialized()
+            gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
+            gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
+            gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+            gmsh.model.mesh.generate(3)
+
+            mesh._save_changes(save_all=True)
+            return mesh
