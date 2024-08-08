@@ -1,10 +1,10 @@
-"""GMSH wrapper and DAGMC geometry creator."""
+"""Gmsh wrapper and DAGMC geometry creator."""
 
 from .geometry import Geometry  # noqa: F401
 from .mesh import (
-    GMSHSurfaceAlgo,
-    GMSHSurfaceOptions,
-    GMSHVolumeAlgo,
+    GmshSurfaceAlgo,
+    GmshSurfaceOptions,
+    GmshVolumeAlgo,
     OCCSurfaceAlgo,
     OCCSurfaceOptions,
     SurfaceMesh,
