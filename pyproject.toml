@@ -2,7 +2,7 @@
 name = "stellarmesh"
 version = "0.4.2"
 authors = [{ name = "Alex Koen" }]
-description = "GMSH wrapper and DAGMC geometry creator."
+description = "Gmsh wrapper and DAGMC geometry creator."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["gmsh", "numpy", "pymoab", "pymmg", "cadquery-ocp~=7.7.2.1"]

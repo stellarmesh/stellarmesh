@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 class Solid(Protocol):
-    """A Cadquery, build123d or other wrapped for an OCC TopoDS_Solid."""
+    """A Cadquery, build123d or other wrapper for an OCC TopoDS_Solid."""
 
-    wrapped: TopoDS_Solid
+    wrapped: TopoDS_Shape | None
 
 
 class Geometry:

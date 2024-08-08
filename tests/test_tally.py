@@ -54,7 +54,7 @@ class Model(ABC):
     ) -> sm.DAGMCModel:
         mat_names: list[str] = [m.name for m in self.materials]
         geom = sm.Geometry(solids, mat_names)
-        msh = sm.Mesh.from_geometry(geom, min_mesh_size, max_mesh_size)
+        msh = sm.SurfaceMesh.from_geometry(geom, sm.OCCSurfaceOptions(tol_angular=0.2))
         return sm.DAGMCModel.from_mesh(msh)
 
 
