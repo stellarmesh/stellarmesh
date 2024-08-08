@@ -25,7 +25,7 @@ from OCP.IMeshTools import (
     IMeshTools_MeshAlgoType_Watson,
     IMeshTools_Parameters,
 )
-from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD, TopAbs_REVERSED
+from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
@@ -159,7 +159,9 @@ class Mesh:
                 gmsh.model.add_physical_group(dim, tags, tag, name)
 
 
-class GMSHSurfaceAlgo(Enum):
+class GmshSurfaceAlgo(Enum):
+    """Algorithm used by Gmsh for surface meshing."""
+
     MESH_ADAPT = 1
     AUTOMATIC = 2
     INITIAL_ONLY = 3
@@ -171,7 +173,9 @@ class GMSHSurfaceAlgo(Enum):
     QUASI_STRUCTURED_QUAD = 11
 
 
-class GMSHVolumeAlgo(Enum):
+class GmshVolumeAlgo(Enum):
+    """Algorithm used by Gmsh for volume meshing."""
+
     DELAUNAY = 1
     INITIAL_ONLY = 3
     FRONTAL = 4
@@ -181,40 +185,60 @@ class GMSHVolumeAlgo(Enum):
 
 
 @dataclass
-class GMSHMeshingOptions(Protocol):
+class GmshMeshingOptions(Protocol):
+    """Gmsh generic meshing options.
+
+    See https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes for
+    parameter descriptions.
+
+    Attributes:
+        min_mesh_size: Min element size
+        max_mesh_size: Max element size
+    """
+
     min_mesh_size: float
     max_mesh_size: float
 
 
 @dataclass
-class GMSHSurfaceOptions(GMSHMeshingOptions):
-    """GMSH surface meshing options.
+class GmshSurfaceOptions(GmshMeshingOptions):
+    """Gmsh surface meshing options.
 
     See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
 
-    Args:
+    Attributes:
         min_mesh_size: Min mesh element size. Defaults to 50.
         max_mesh_size: Max mesh element size. Defaults to 50.
-        algorithm: GMSH meshing algorithm.
+        algorithm: Gmsh meshing algorithm.
     """
 
     min_mesh_size: float = 50
     max_mesh_size: float = 50
-    algorithm: GMSHSurfaceAlgo = GMSHSurfaceAlgo.AUTOMATIC
+    algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
 
 
 @dataclass
-class GMSHVolumeOptions(GMSHMeshingOptions):
-    algorithm: GMSHVolumeAlgo = GMSHVolumeAlgo.DELAUNAY
+class GmshVolumeOptions(GmshMeshingOptions):
+    """Gmsh volume meshing options.
+
+    Attributes:
+        algorithm: Gmsh volume meshing algorithm.
+    """
+
+    algorithm: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
 
 
 class OCCSurfaceAlgo(Enum):
+    """OCC surface meshing algorithm."""
+
     WATSON = IMeshTools_MeshAlgoType_Watson
     DELABELLA = IMeshTools_MeshAlgoType_Delabella
 
 
 @dataclass
 class OCCSurfaceOptions:
+    """OCC surface meshing options."""
+
     algorithm = OCCSurfaceAlgo.WATSON
     tol_angular: float = 0.5
     tol_linear: Optional[float] = None
@@ -241,7 +265,7 @@ class SurfaceMesh(Mesh):
     """A surface mesh."""
 
     @staticmethod
-    def _mesh_gmsh(options: GMSHSurfaceOptions | OCCSurfaceOptions):
+    def _mesh_gmsh(options: GmshSurfaceOptions | OCCSurfaceOptions):
         assert gmsh.is_initialized()
         gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
         gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
@@ -249,7 +273,7 @@ class SurfaceMesh(Mesh):
         gmsh.model.mesh.generate(2)
 
     @staticmethod
-    def _mesh_occ(geometry: Geometry, options: GMSHSurfaceOptions | OCCSurfaceOptions):
+    def _mesh_occ(geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions):
         assert gmsh.is_initialized
         cmp = TopoDS_Compound()
         cmp_builder = TopoDS_Builder()
@@ -270,7 +294,7 @@ class SurfaceMesh(Mesh):
             faces.append(face)
             explorer.Next()
 
-        # NOTE: GMSH import logic is at
+        # NOTE: Gmsh import logic is at
         # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
         known_surface_tags = []
         for face in faces:
@@ -317,7 +341,7 @@ class SurfaceMesh(Mesh):
 
     @classmethod
     def from_geometry(
-        cls, geometry: Geometry, options: GMSHSurfaceOptions | OCCSurfaceOptions
+        cls, geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions
     ) -> SurfaceMesh:
         """Mesh solids with Gmsh.
 
@@ -348,8 +372,8 @@ class SurfaceMesh(Mesh):
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
-            if type(options).__name__ == GMSHSurfaceOptions.__name__:
-                # GMSH Meshing
+            if type(options).__name__ == GmshSurfaceOptions.__name__:
+                # Gmsh Meshing
                 cls._mesh_gmsh(options)
             elif type(options).__name__ == OCCSurfaceOptions.__name__:
                 cls._mesh_occ(geometry, options)
