@@ -5,6 +5,7 @@
 .vscode/
 *.h5m
 *.msh
+*.nc
 *.vtk
 *.mesh
 *.sol

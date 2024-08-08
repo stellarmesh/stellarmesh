@@ -11,12 +11,24 @@ from __future__ import annotations
 import logging
 import subprocess
 import tempfile
-import warnings
 from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol, assert_never
 
 import gmsh
+from OCP.BRep import BRep_Tool
+from OCP.BRepMesh import BRepMesh_IncrementalMesh
+from OCP.IMeshTools import (
+    IMeshTools_MeshAlgoType_Delabella,
+    IMeshTools_MeshAlgoType_Watson,
+    IMeshTools_Parameters,
+)
+from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
+from OCP.TopExp import TopExp_Explorer
+from OCP.TopLoc import TopLoc_Location
+from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
 
 from .geometry import Geometry
 
@@ -75,80 +87,6 @@ class Mesh:
         with self:
             gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
             gmsh.write(filename)
-
-    @classmethod
-    def from_geometry(
-        cls,
-        geometry: Geometry,
-        min_mesh_size: float = 50,
-        max_mesh_size: float = 50,
-        dim: int = 2,
-    ) -> Mesh:
-        """Mesh solids with Gmsh.
-
-        See Gmsh documentation on mesh sizes:
-        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
-
-        Args:
-            geometry: Geometry to be meshed.
-            min_mesh_size: Min mesh element size. Defaults to 50.
-            max_mesh_size: Max mesh element size. Defaults to 50.
-            dim: Generate a mesh up to this dimension. Defaults to 2.
-        """
-        logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
-
-        with cls() as mesh:
-            gmsh.model.add("stellarmesh_model")
-
-            material_solid_map = {}
-            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
-                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
-                if dim_tags[0][0] != 3:
-                    raise TypeError("Importing non-solid geometry.")
-
-                solid_tag = dim_tags[0][1]
-                if m not in material_solid_map:
-                    material_solid_map[m] = [solid_tag]
-                else:
-                    material_solid_map[m].append(solid_tag)
-
-            gmsh.model.occ.synchronize()
-
-            for material, solid_tags in material_solid_map.items():
-                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
-
-            gmsh.option.set_number("Mesh.MeshSizeMin", min_mesh_size)
-            gmsh.option.set_number("Mesh.MeshSizeMax", max_mesh_size)
-            gmsh.model.mesh.generate(dim)
-
-            mesh._save_changes(save_all=True)
-            return mesh
-
-    @classmethod
-    def mesh_geometry(
-        cls,
-        geometry: Geometry,
-        min_mesh_size: float = 50,
-        max_mesh_size: float = 50,
-        dim: int = 2,
-    ) -> Mesh:
-        """Mesh solids with Gmsh.
-
-        See Gmsh documentation on mesh sizes:
-        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
-
-        Args:
-            geometry: Geometry to be meshed.
-            min_mesh_size: Min mesh element size. Defaults to 50.
-            max_mesh_size: Max mesh element size. Defaults to 50.
-            dim: Generate a mesh up to this dimension. Defaults to 2.
-        """
-        warnings.warn(
-            "The mesh_geometry method is deprecated. Use from_geometry instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return cls.from_geometry(geometry, min_mesh_size, max_mesh_size, dim)
 
     def render(
         self,
@@ -219,6 +157,233 @@ class Mesh:
                 dim, tag = physical_group[0]
                 tags, name = physical_group[1]
                 gmsh.model.add_physical_group(dim, tags, tag, name)
+
+
+class GmshSurfaceAlgo(Enum):
+    """Algorithm used by Gmsh for surface meshing."""
+
+    MESH_ADAPT = 1
+    AUTOMATIC = 2
+    INITIAL_ONLY = 3
+    DELAUNAY = 5
+    FRONTAL_DELAUNAY = 6
+    BAMG = 7
+    FRONTAL_DELAUNAY_QUADS = 8
+    PACKING_OF_PARALLELOGRAMS = 9
+    QUASI_STRUCTURED_QUAD = 11
+
+
+class GmshVolumeAlgo(Enum):
+    """Algorithm used by Gmsh for volume meshing."""
+
+    DELAUNAY = 1
+    INITIAL_ONLY = 3
+    FRONTAL = 4
+    MMG3D = 7
+    R_TREE = 9
+    HXT = 10
+
+
+@dataclass
+class GmshMeshingOptions(Protocol):
+    """Gmsh generic meshing options.
+
+    See https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes for
+    parameter descriptions.
+
+    Attributes:
+        min_mesh_size: Min element size
+        max_mesh_size: Max element size
+    """
+
+    min_mesh_size: float
+    max_mesh_size: float
+
+
+@dataclass
+class GmshSurfaceOptions(GmshMeshingOptions):
+    """Gmsh surface meshing options.
+
+    See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
+
+    Attributes:
+        min_mesh_size: Min mesh element size. Defaults to 50.
+        max_mesh_size: Max mesh element size. Defaults to 50.
+        algorithm: Gmsh meshing algorithm.
+    """
+
+    min_mesh_size: float
+    max_mesh_size: float
+    algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
+
+
+@dataclass
+class GmshVolumeOptions(GmshMeshingOptions):
+    """Gmsh volume meshing options.
+
+    Attributes:
+        algorithm: Gmsh volume meshing algorithm.
+    """
+
+    min_mesh_size: float
+    max_mesh_size: float
+    algorithm: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
+
+
+class OCCSurfaceAlgo(Enum):
+    """OCC surface meshing algorithm."""
+
+    WATSON = IMeshTools_MeshAlgoType_Watson
+    DELABELLA = IMeshTools_MeshAlgoType_Delabella
+
+
+@dataclass
+class OCCSurfaceOptions:
+    """OCC surface meshing options."""
+
+    algorithm = OCCSurfaceAlgo.WATSON
+    tol_angular: float = 0.5
+    tol_linear: Optional[float] = None
+    min_mesh_size: Optional[float] = None
+    relative: bool = False
+
+    def build_params(self) -> IMeshTools_Parameters:
+        """Build IMeshTools Parameters struct from values."""
+        params = IMeshTools_Parameters()
+
+        params.Angle = self.tol_angular
+        params.MeshAlgo = self.algorithm.value
+
+        if self.tol_linear:
+            params.Deflection = self.tol_linear
+
+        params.Relative = self.relative
+        params.InParallel = True
+
+        return params
+
+
+class SurfaceMesh(Mesh):
+    """A surface mesh."""
+
+    @staticmethod
+    def _mesh_gmsh(options: GmshSurfaceOptions | OCCSurfaceOptions):
+        assert gmsh.is_initialized()
+        gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
+        gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
+        gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+        gmsh.model.mesh.generate(2)
+
+    @staticmethod
+    def _mesh_occ(geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions):
+        assert gmsh.is_initialized
+        cmp = TopoDS_Compound()
+        cmp_builder = TopoDS_Builder()
+        cmp_builder.MakeCompound(cmp)
+
+        for shape in geometry.solids:
+            cmp_builder.Add(cmp, shape)
+
+        params = options.build_params()  # type: ignore
+
+        BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
+
+        loc = TopLoc_Location()
+        explorer = TopExp_Explorer(cmp, TopAbs_FACE)
+        faces = []
+        while explorer.More():
+            face = TopoDS.Face_s(explorer.Current())
+            faces.append(face)
+            explorer.Next()
+
+        # NOTE: Gmsh import logic is at
+        # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
+        known_surface_tags = []
+        for face in faces:
+            dim_tags = gmsh.model.occ.import_shapes_native_pointer(face._address())
+            surface_tag = dim_tags[0][1]
+            if surface_tag in known_surface_tags:
+                continue
+            known_surface_tags.append(surface_tag)
+            ocp_mesh_vertices = []
+            triangles = []
+            offset = 0
+
+            poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
+            trsf = loc.Transformation()
+            # Store vertices
+            node_count = poly_triangulation.NbNodes()
+            for j in range(1, node_count + 1):
+                gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
+                pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
+                ocp_mesh_vertices.extend(pnt)
+
+            # Store triangles
+            order = (
+                [1, 2, 3]
+                if face.Orientation().value == TopAbs_FORWARD.value
+                else [3, 2, 1]
+            )
+            for tri in poly_triangulation.Triangles():
+                triangles.extend([tri.Value(i) + offset - 1 for i in order])
+            offset += node_count
+            gmsh.model.mesh.add_nodes(
+                2,
+                surface_tag,
+                [],
+                ocp_mesh_vertices,
+            )
+            nodes, _, _ = gmsh.model.mesh.get_nodes(
+                2, surface_tag, includeBoundary=True
+            )
+            node_start = nodes[0]
+            gmsh.model.mesh.add_elements_by_type(
+                surface_tag, 2, [], [node_start + i for i in triangles]
+            )
+
+    @classmethod
+    def from_geometry(
+        cls, geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions
+    ) -> SurfaceMesh:
+        """Mesh solids with Gmsh.
+
+        See Gmsh documentation on mesh sizes:
+        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
+
+        Args:
+            geometry: Geometry to be meshed.
+            options: Meshing options.
+        """
+        with cls() as mesh:
+            gmsh.model.add("stellarmesh_model")
+
+            material_solid_map = {}
+            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
+                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
+                if dim_tags[0][0] != 3:
+                    raise TypeError("Importing non-solid geometry.")
+
+                solid_tag = dim_tags[0][1]
+                if m not in material_solid_map:
+                    material_solid_map[m] = [solid_tag]
+                else:
+                    material_solid_map[m].append(solid_tag)
+
+            gmsh.model.occ.synchronize()
+
+            for material, solid_tags in material_solid_map.items():
+                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
+
+            if type(options).__name__ == GmshSurfaceOptions.__name__:
+                # Gmsh Meshing
+                cls._mesh_gmsh(options)
+            elif type(options).__name__ == OCCSurfaceOptions.__name__:
+                cls._mesh_occ(geometry, options)
+            else:
+                assert_never(options)
+
+            mesh._save_changes(save_all=True)
+            return mesh
 
     def refine(  # noqa: PLR0913
         self,
@@ -323,3 +488,50 @@ class Mesh:
             gmsh.option.set_number("Mesh.SaveAll", 1)
             gmsh.write(new_filename)
             return type(self)(new_filename)
+
+
+class VolumeMesh(Mesh):
+    """Volume Mesh."""
+
+    @classmethod
+    def from_geometry(
+        cls, geometry: Geometry, options: GmshVolumeOptions
+    ) -> VolumeMesh:
+        """Mesh solids with Gmsh.
+
+        See Gmsh documentation on mesh sizes:
+        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
+
+        Args:
+            geometry: Geometry to be meshed.
+            options: Meshing options.
+        """
+        with cls() as mesh:
+            # TODO(akoen): this is not DRY
+            gmsh.model.add("stellarmesh_model")
+
+            material_solid_map = {}
+            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
+                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
+                if dim_tags[0][0] != 3:
+                    raise TypeError("Importing non-solid geometry.")
+
+                solid_tag = dim_tags[0][1]
+                if m not in material_solid_map:
+                    material_solid_map[m] = [solid_tag]
+                else:
+                    material_solid_map[m].append(solid_tag)
+
+            gmsh.model.occ.synchronize()
+
+            for material, solid_tags in material_solid_map.items():
+                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
+
+            assert gmsh.is_initialized()
+            gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
+            gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
+            gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+            gmsh.model.mesh.generate(3)
+
+            mesh._save_changes(save_all=True)
+            return mesh
