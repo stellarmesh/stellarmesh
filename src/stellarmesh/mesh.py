@@ -25,7 +25,7 @@ from OCP.IMeshTools import (
     IMeshTools_MeshAlgoType_Watson,
     IMeshTools_Parameters,
 )
-from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
+from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD, TopAbs_REVERSED
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
@@ -242,6 +242,7 @@ class SurfaceMesh(Mesh):
 
     @staticmethod
     def _mesh_gmsh(options: GMSHSurfaceOptions | OCCSurfaceOptions):
+        assert gmsh.is_initialized()
         gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
         gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
         gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
@@ -249,6 +250,7 @@ class SurfaceMesh(Mesh):
 
     @staticmethod
     def _mesh_occ(geometry: Geometry, options: GMSHSurfaceOptions | OCCSurfaceOptions):
+        assert gmsh.is_initialized
         cmp = TopoDS_Compound()
         cmp_builder = TopoDS_Builder()
         cmp_builder.MakeCompound(cmp)
@@ -269,10 +271,19 @@ class SurfaceMesh(Mesh):
             explorer.Next()
 
         # ASSUMPTION: The order of faces returned by TopExp_Explorer is the
-        # same as the order of Gmsh surfaces.
-        faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
-        surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
-        for face, surface_tag in zip(faces, surface_tags, strict=True):
+        # same as the order of Gmsh surfaces. This logic is at
+        # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
+        # forward_faces = [f for f in faces if f.Orientation() == TopAbs_FORWARD]
+        face_orientations = [f.Orientation() for f in faces]
+        # surface_tags = [e[1] for e in gmsh.model.get_entities(2)]
+        # for face, surface_tag in zip(, surface_tags, strict=True):
+        known_surface_tags = []
+        for face in faces:
+            dim_tags = gmsh.model.occ.import_shapes_native_pointer(face._address())
+            surface_tag = dim_tags[0][1]
+            if surface_tag in known_surface_tags:
+                continue
+            known_surface_tags.append(surface_tag)
             ocp_mesh_vertices = []
             triangles = []
             offset = 0
@@ -287,7 +298,11 @@ class SurfaceMesh(Mesh):
                 ocp_mesh_vertices.extend(pnt)
 
             # Store triangles
-            order = [1, 2, 3]
+            order = (
+                [1, 2, 3]
+                if face.Orientation().value == TopAbs_FORWARD.value
+                else [3, 2, 1]
+            )
             for tri in poly_triangulation.Triangles():
                 triangles.extend([tri.Value(i) + offset - 1 for i in order])
             offset += node_count
