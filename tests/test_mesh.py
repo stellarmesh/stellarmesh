@@ -18,10 +18,13 @@ from .test_geometry import (
 @pytest.mark.parametrize(
     "model_name",
     [
-        geom_bd_layered_torus.__name__,
-        geom_bd_nestedspheres.__name__,
-        geom_bd_sphere.__name__,
-        geom_bd_imprintedboxes.__name__,
+        e.__name__
+        for e in [
+            geom_bd_layered_torus,
+            geom_bd_nestedspheres,
+            geom_bd_sphere,
+            geom_bd_imprintedboxes,
+        ]
     ],
 )
 def test_mesh_output(model_name: str, request: pytest.FixtureRequest, tmp_path: Path):
@@ -62,3 +65,11 @@ def test_mesh_volume_bd_imprintedboxes(geom_bd_imprintedboxes):
     )
 
     mesh.write("out.msh")
+
+
+def test_mesh_export_exodus(geom_bd_layered_torus):
+    mesh = sm.VolumeMesh.from_geometry(
+        geom_bd_layered_torus, sm.GmshVolumeOptions(5, 5)
+    )
+    mesh.write("mesh.msh")
+    mesh.write("mesh.e")

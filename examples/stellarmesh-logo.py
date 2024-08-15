@@ -11,5 +11,5 @@ cmp = bd.Compound.make_text("S", 14, font="Arial Black")
 solids = [f.thicken(0.01) for f in cmp.faces()]
 
 geometry = sm.Geometry(solids, [""] * len(solids))
-mesh = sm.Mesh.from_geometry(geometry, min_mesh_size=1, max_mesh_size=2)
+mesh = sm.SurfaceMesh.from_geometry(geometry, sm.GmshSurfaceOptions(1, 2))
 mesh.render("doc/logo.png", rotation_xyz=(0, 0, 0), clipping=False)
