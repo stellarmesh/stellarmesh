@@ -15,9 +15,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Protocol, assert_never
+from typing import Optional, Protocol
 
 import gmsh
+import meshio
 from OCP.BRep import BRep_Tool
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from OCP.IMeshTools import (
@@ -30,133 +31,10 @@ from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
 
+from ._core import PathLike
 from .geometry import Geometry
 
 logger = logging.getLogger(__name__)
-
-
-class Mesh:
-    """A Gmsh mesh.
-
-    As gmsh allows for only a single process, this class provides a context manager to
-    set the gmsh api to operate on this mesh.
-    """
-
-    _mesh_filename: str
-
-    def __init__(self, mesh_filename: Optional[str] = None):
-        """Initialize a mesh from a .msh file.
-
-        Args:
-            mesh_filename: Optional .msh filename. If not provided defaults to a
-            temporary file. Defaults to None.
-        """
-        if not mesh_filename:
-            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as mesh_file:
-                mesh_filename = mesh_file.name
-        self._mesh_filename = mesh_filename
-
-    def __enter__(self):
-        """Enter mesh context, setting gmsh commands to operate on this mesh."""
-        if not gmsh.is_initialized():
-            gmsh.initialize()
-
-        gmsh.option.set_number(
-            "General.Terminal",
-            1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-        )
-        gmsh.open(self._mesh_filename)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Cleanup (finalize) gmsh."""
-        gmsh.finalize()
-
-    def _save_changes(self, *, save_all: bool = True):
-        gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
-        gmsh.write(self._mesh_filename)
-
-    def write(self, filename: str, *, save_all: bool = True):
-        """Write mesh to a .msh file.
-
-        Args:
-            filename: Path to write file.
-            save_all: Whether to save all entities (or just physical groups). See
-            Gmsh documentation for Mesh.SaveAll. Defaults to True.
-        """
-        with self:
-            gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
-            gmsh.write(filename)
-
-    def render(
-        self,
-        output_filename: Optional[str] = None,
-        rotation_xyz: tuple[float, float, float] = (0, 0, 0),
-        normals: int = 0,
-        *,
-        clipping: bool = True,
-    ) -> str:
-        """Render mesh as an image.
-
-        Args:
-            output_filename: Optional output filename. Defaults to None.
-            rotation_xyz: Rotation in Euler angles. Defaults to (0, 0, 0).
-            normals: Normal render size. Defaults to 0.
-            clipping: Whether to enable mesh clipping. Defaults to True.
-
-        Returns:
-            Path to image file, either passed output_filename or a temporary file.
-        """
-        with self:
-            gmsh.option.set_number("Mesh.SurfaceFaces", 1)
-            gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
-            gmsh.option.set_number("Mesh.Normals", normals)
-            gmsh.option.set_number("General.Trackball", 0)
-            gmsh.option.set_number("General.RotationX", rotation_xyz[0])
-            gmsh.option.set_number("General.RotationY", rotation_xyz[1])
-            gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
-            if not output_filename:
-                with tempfile.NamedTemporaryFile(
-                    delete=False, mode="w", suffix=".png"
-                ) as temp_file:
-                    output_filename = temp_file.name
-
-            try:
-                gmsh.fltk.initialize()
-                gmsh.write(output_filename)
-            finally:
-                gmsh.fltk.finalize()
-            return output_filename
-
-    @staticmethod
-    def _check_is_initialized():
-        if not gmsh.is_initialized():
-            raise RuntimeError("Gmsh not initialized.")
-
-    @contextmanager
-    def _stash_physical_groups(self):
-        self._check_is_initialized()
-        physical_groups: dict[tuple[int, int], tuple[list[int], str]] = {}
-        dim_tags = gmsh.model.get_physical_groups()
-        for dim_tag in dim_tags:
-            tags = gmsh.model.get_entities_for_physical_group(*dim_tag)
-            name = gmsh.model.get_physical_name(*dim_tag)
-            physical_groups[dim_tag] = (tags, name)
-        gmsh.model.remove_physical_groups(dim_tags)
-
-        try:
-            yield
-        except Exception as e:
-            raise RuntimeError("Cannot unstash physical groups due to error.") from e
-        else:
-            if len(gmsh.model.get_physical_groups()) > 0:
-                raise RuntimeError(
-                    "Not overwriting existing physical groups on stash restore."
-                )
-            for physical_group in physical_groups.items():
-                dim, tag = physical_group[0]
-                tags, name = physical_group[1]
-                gmsh.model.add_physical_group(dim, tags, tag, name)
 
 
 class GmshSurfaceAlgo(Enum):
@@ -251,9 +129,10 @@ class OCCSurfaceOptions:
         """Build IMeshTools Parameters struct from values."""
         params = IMeshTools_Parameters()
 
-        params.Angle = self.tol_angular
         params.MeshAlgo = self.algorithm.value
 
+        if self.tol_angular:
+            params.Angle = self.tol_angular
         if self.tol_linear:
             params.Deflection = self.tol_linear
 
@@ -261,6 +140,136 @@ class OCCSurfaceOptions:
         params.InParallel = True
 
         return params
+
+
+class Mesh:
+    """A Gmsh mesh.
+
+    As gmsh allows for only a single process, this class provides a context manager to
+    set the Gmsh API to operate on this mesh.
+    """
+
+    _mesh_filename: str
+
+    def __init__(self, mesh_filename: Optional[PathLike] = None):
+        """Initialize a mesh from a .msh file.
+
+        Args:
+            mesh_filename: Optional .msh filename. If not provided defaults to a
+            temporary file. Defaults to None.
+        """
+        if not mesh_filename:
+            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as mesh_file:
+                mesh_filename = mesh_file.name
+        self._mesh_filename = str(mesh_filename)
+
+    def __enter__(self):
+        """Enter mesh context, setting gmsh commands to operate on this mesh."""
+        if not gmsh.is_initialized():
+            gmsh.initialize()
+
+        gmsh.option.set_number(
+            "General.Terminal",
+            1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+        )
+        gmsh.open(self._mesh_filename)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup (finalize) gmsh."""
+        gmsh.finalize()
+
+    def _save_changes(self, *, save_all: bool = True):
+        gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
+        gmsh.write(self._mesh_filename)
+
+    def write(self, filename: str, *, save_all: bool = True):
+        """Write mesh to a .msh file.
+
+        Args:
+            filename: Path to write file.
+            save_all: Whether to save all entities (or just physical groups). See
+            Gmsh documentation for Mesh.SaveAll. Defaults to True.
+        """
+        with self:
+            gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
+            try:
+                gmsh.write(filename)
+            except Exception:
+                with tempfile.NamedTemporaryFile(suffix=".msh") as tmp_mesh:
+                    gmsh.write(tmp_mesh.name)
+                    mesh = meshio.read(tmp_mesh.name)
+                    meshio.write(filename, mesh)
+
+    def render(
+        self,
+        output_filename: Optional[str] = None,
+        rotation_xyz: tuple[float, float, float] = (0, 0, 0),
+        normals: int = 0,
+        *,
+        clipping: bool = True,
+    ) -> str:
+        """Render mesh as an image.
+
+        Args:
+            output_filename: Optional output filename. Defaults to None.
+            rotation_xyz: Rotation in Euler angles. Defaults to (0, 0, 0).
+            normals: Normal render size. Defaults to 0.
+            clipping: Whether to enable mesh clipping. Defaults to True.
+
+        Returns:
+            Path to image file, either passed output_filename or a temporary file.
+        """
+        with self:
+            gmsh.option.set_number("Mesh.SurfaceFaces", 1)
+            gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
+            gmsh.option.set_number("Mesh.Normals", normals)
+            gmsh.option.set_number("General.Trackball", 0)
+            gmsh.option.set_number("General.RotationX", rotation_xyz[0])
+            gmsh.option.set_number("General.RotationY", rotation_xyz[1])
+            gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
+            if not output_filename:
+                with tempfile.NamedTemporaryFile(
+                    delete=False, mode="w", suffix=".png"
+                ) as temp_file:
+                    output_filename = temp_file.name
+
+            try:
+                gmsh.fltk.initialize()
+                gmsh.write(output_filename)
+            finally:
+                gmsh.fltk.finalize()
+            return output_filename
+
+    @staticmethod
+    def _check_is_initialized():
+        if not gmsh.is_initialized():
+            raise RuntimeError("Gmsh not initialized.")
+
+    @contextmanager
+    def _stash_physical_groups(self):
+        self._check_is_initialized()
+        physical_groups: dict[tuple[int, int], tuple[list[int], str]] = {}
+        dim_tags = gmsh.model.get_physical_groups()
+        for dim_tag in dim_tags:
+            tags = gmsh.model.get_entities_for_physical_group(*dim_tag)
+            name = gmsh.model.get_physical_name(*dim_tag)
+            physical_groups[dim_tag] = (tags, name)
+        gmsh.model.remove_physical_groups(dim_tags)
+
+        try:
+            yield
+        except Exception as e:
+            raise RuntimeError("Cannot unstash physical groups due to error.") from e
+        else:
+            if len(gmsh.model.get_physical_groups()) > 0:
+                raise RuntimeError(
+                    "Not overwriting existing physical groups on stash restore."
+                )
+            for physical_group in physical_groups.items():
+                dim, tag = physical_group[0]
+                tags, name = physical_group[1]
+                gmsh.model.add_physical_group(dim, tags, tag, name)
 
 
 class SurfaceMesh(Mesh):
@@ -375,12 +384,13 @@ class SurfaceMesh(Mesh):
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
             if type(options).__name__ == GmshSurfaceOptions.__name__:
-                # Gmsh Meshing
                 cls._mesh_gmsh(options)
             elif type(options).__name__ == OCCSurfaceOptions.__name__:
                 cls._mesh_occ(geometry, options)
             else:
-                assert_never(options)
+                raise RuntimeError(
+                    "Unreachable code. May be caused by module hot-reloading."
+                )
 
             mesh._save_changes(save_all=True)
             return mesh
@@ -507,27 +517,15 @@ class VolumeMesh(Mesh):
             options: Meshing options.
         """
         with cls() as mesh:
-            # TODO(akoen): this is not DRY
             gmsh.model.add("stellarmesh_model")
 
-            material_solid_map = {}
-            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
+            for s in geometry.solids:
                 dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
-                solid_tag = dim_tags[0][1]
-                if m not in material_solid_map:
-                    material_solid_map[m] = [solid_tag]
-                else:
-                    material_solid_map[m].append(solid_tag)
-
             gmsh.model.occ.synchronize()
 
-            for material, solid_tags in material_solid_map.items():
-                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
-
-            assert gmsh.is_initialized()
             gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
             gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
             gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)

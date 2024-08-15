@@ -22,12 +22,10 @@ import pymoab.core
 import pymoab.types
 from pymoab.rng import Range
 
+from ._core import PathLike
 from .mesh import Mesh
 
 logger = logging.getLogger(__name__)
-
-# Type for arguments that accept file paths
-PathLike = Union[str, os.PathLike]
 
 
 class EntitySet:

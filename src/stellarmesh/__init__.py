@@ -5,9 +5,11 @@ from .mesh import (
     GmshSurfaceAlgo,
     GmshSurfaceOptions,
     GmshVolumeAlgo,
+    GmshVolumeOptions,
     OCCSurfaceAlgo,
     OCCSurfaceOptions,
     SurfaceMesh,
+    VolumeMesh,
 )
 
 # noqa: F401
