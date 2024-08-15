@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Optional
 
 import gmsh
 import meshio
@@ -63,23 +63,7 @@ class GmshVolumeAlgo(Enum):
 
 
 @dataclass
-class GmshMeshingOptions(Protocol):
-    """Gmsh generic meshing options.
-
-    See https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes for
-    parameter descriptions.
-
-    Attributes:
-        min_mesh_size: Min element size
-        max_mesh_size: Max element size
-    """
-
-    min_mesh_size: float
-    max_mesh_size: float
-
-
-@dataclass
-class GmshSurfaceOptions(GmshMeshingOptions):
+class GmshSurfaceOptions:
     """Gmsh surface meshing options.
 
     See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
@@ -87,6 +71,7 @@ class GmshSurfaceOptions(GmshMeshingOptions):
     Attributes:
         min_mesh_size: Min mesh element size.
         max_mesh_size: Max mesh element size.
+        curvature_target: Target number of elements per 2pi radians.
         algorithm: Gmsh meshing algorithm.
     """
 
@@ -113,8 +98,10 @@ class GmshSurfaceOptions(GmshMeshingOptions):
 
 
 @dataclass
-class GmshVolumeOptions(GmshMeshingOptions):
+class GmshVolumeOptions:
     """Gmsh volume meshing options.
+
+    See See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
 
     Attributes:
         algorithm: Gmsh volume meshing algorithm.
@@ -404,9 +391,9 @@ class SurfaceMesh(Mesh):
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
             if type(options).__name__ == GmshSurfaceOptions.__name__:
-                cls._mesh_gmsh(options)
+                cls._mesh_gmsh(options)  # type: ignore
             elif type(options).__name__ == OCCSurfaceOptions.__name__:
-                cls._mesh_occ(geometry, options)
+                cls._mesh_occ(geometry, options)  # type: ignore
             else:
                 raise RuntimeError(
                     "Unreachable code. May be caused by module hot-reloading."
