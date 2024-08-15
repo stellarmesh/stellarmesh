@@ -5,6 +5,7 @@
 .vscode/
 *.h5m
 *.msh
+*.e
 *.nc
 *.vtk
 *.mesh
@@ -21,4 +22,6 @@ dist/
 README_files/
 README.html
 __pycache__/
+
+!tests/data/*.msh
 
