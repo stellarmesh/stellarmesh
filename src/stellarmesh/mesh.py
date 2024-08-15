@@ -85,15 +85,31 @@ class GmshSurfaceOptions(GmshMeshingOptions):
     See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
 
     Attributes:
-        min_mesh_size: Min mesh element size. Defaults to 50.
-        max_mesh_size: Max mesh element size. Defaults to 50.
+        min_mesh_size: Min mesh element size.
+        max_mesh_size: Max mesh element size.
         algorithm: Gmsh meshing algorithm.
     """
 
-    min_mesh_size: float
-    max_mesh_size: float
+    min_mesh_size: Optional[float] = None
+    max_mesh_size: Optional[float] = None
+    curvature_target: Optional[float] = None
     algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
     _recombine: bool = False
+
+    def set_options(self):
+        """Set corresponding Gmsh options."""
+        assert gmsh.is_initialized()
+
+        if self.min_mesh_size:
+            gmsh.option.set_number("Mesh.MeshSizeMin", self.min_mesh_size)
+
+        if self.max_mesh_size:
+            gmsh.option.set_number("Mesh.MeshSizeMax", self.max_mesh_size)
+
+        if self.curvature_target:
+            gmsh.option.set_number("Mesh.MeshSizeFromCurvature", self.curvature_target)
+
+        gmsh.option.set_number("Mesh.Algorithm", self.algorithm.value)
 
 
 @dataclass
@@ -278,10 +294,7 @@ class SurfaceMesh(Mesh):
 
     @staticmethod
     def _mesh_gmsh(options: GmshSurfaceOptions):
-        assert gmsh.is_initialized()
-        gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
-        gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
-        gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+        options.set_options()
 
         if options._recombine:
             tags = [e[1] for e in gmsh.model.get_entities(2)]
