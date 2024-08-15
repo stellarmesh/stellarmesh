@@ -93,6 +93,7 @@ class GmshSurfaceOptions(GmshMeshingOptions):
     min_mesh_size: float
     max_mesh_size: float
     algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
+    _recombine: bool = False
 
 
 @dataclass
@@ -276,15 +277,21 @@ class SurfaceMesh(Mesh):
     """A surface mesh."""
 
     @staticmethod
-    def _mesh_gmsh(options: GmshSurfaceOptions | OCCSurfaceOptions):
+    def _mesh_gmsh(options: GmshSurfaceOptions):
         assert gmsh.is_initialized()
         gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
-        gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)  # type: ignore
+        gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
         gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+
+        if options._recombine:
+            tags = [e[1] for e in gmsh.model.get_entities(2)]
+            for tag in tags:
+                gmsh.model.mesh.set_recombine(2, tag)
+
         gmsh.model.mesh.generate(2)
 
     @staticmethod
-    def _mesh_occ(geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions):
+    def _mesh_occ(geometry: Geometry, options: OCCSurfaceOptions):
         assert gmsh.is_initialized
         cmp = TopoDS_Compound()
         cmp_builder = TopoDS_Builder()
@@ -293,7 +300,7 @@ class SurfaceMesh(Mesh):
         for shape in geometry.solids:
             cmp_builder.Add(cmp, shape)
 
-        params = options.build_params()  # type: ignore
+        params = options.build_params()
 
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
@@ -535,10 +542,7 @@ class VolumeMesh(Mesh):
             return mesh
 
     def skin(self) -> SurfaceMesh:
-        """Transform a tetrahedral volume mesh into a triangular surface mesh.
-
-        Returns: the new surface mesh.
-        """
+        """Transform a tetrahedral volume mesh into a triangular surface mesh."""
         surface_mesh = SurfaceMesh()
         self.write(surface_mesh._mesh_filename)
 
