@@ -145,7 +145,7 @@ class OCCSurfaceOptions:
 class Mesh:
     """A Gmsh mesh.
 
-    As gmsh allows for only a single process, this class provides a context manager to
+    As Gmsh allows for only a single process, this class provides a context manager to
     set the Gmsh API to operate on this mesh.
     """
 
@@ -183,7 +183,7 @@ class Mesh:
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.write(self._mesh_filename)
 
-    def write(self, filename: str, *, save_all: bool = True):
+    def write(self, filename: PathLike, *, save_all: bool = True):
         """Write mesh to a .msh file.
 
         Args:
@@ -533,3 +533,18 @@ class VolumeMesh(Mesh):
 
             mesh._save_changes(save_all=True)
             return mesh
+
+    def skin(self) -> SurfaceMesh:
+        """Transform a tetrahedral volume mesh into a triangular surface mesh.
+
+        Returns: the new surface mesh.
+        """
+        surface_mesh = SurfaceMesh()
+        self.write(surface_mesh._mesh_filename)
+
+        with surface_mesh:
+            dim_tags = gmsh.model.get_entities(3)
+            gmsh.model.mesh.clear(dim_tags)
+            surface_mesh._save_changes()
+
+        return surface_mesh
