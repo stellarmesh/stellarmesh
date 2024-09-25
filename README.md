@@ -56,6 +56,14 @@ pip install build123d
 
 For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
 
+## Meshing backend
+
+Stellarmesh supports surface meshing with both OCC and Gmsh backends.
+
+### OOC
+
+
+
 ## Examples
 
 ### Simple torus geometry

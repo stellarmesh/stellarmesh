@@ -7,9 +7,11 @@ from pymoab.rng import Range
 @pytest.fixture(scope="module")
 def model():
     solid1 = bd.Solid.make_sphere(10.0)
-    solid2 = solid1.faces()[0].thicken(10.0)
+    solid2 = bd.thicken(solid1.faces()[0], 10.0)
     geom = sm.Geometry([solid1, solid2], ["iron", "iron"])
-    mesh = sm.Mesh.from_geometry(geom, max_mesh_size=5, dim=2)
+    mesh = sm.SurfaceMesh.from_geometry(
+        geom, sm.GmshSurfaceOptions(max_mesh_size=5)
+    )
     return sm.DAGMCModel.from_mesh(mesh)
 
 
@@ -116,5 +118,5 @@ def test_hash(model):
 def test_moabmodel_from_h5m():
     solids = [bd.Solid.make_sphere(10.0)]
     geom = sm.Geometry(solids, ["iron"])
-    mesh = sm.Mesh.from_geometry(geom, max_mesh_size=5, dim=3)
+    mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(max_mesh_size=5))
     model = sm.MOABModel.from_mesh(mesh)

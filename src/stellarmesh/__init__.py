@@ -8,6 +8,7 @@ from .mesh import (
     GmshVolumeOptions,
     OCCSurfaceAlgo,
     OCCSurfaceOptions,
+    Mesh,
     SurfaceMesh,
     VolumeMesh,
 )

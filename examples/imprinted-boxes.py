@@ -12,7 +12,7 @@ b2 = b1.transformed(offset=(0, 10, 0))
 b3 = b1.transformed(offset=(0, 5, 10))
 
 
-cmp_initial = bd.Compound.make_compound([b1, b2, b3])
+cmp_initial = bd.Compound([b1, b2, b3])
 solids = cmp_initial.solids()
 geom = sm.Geometry(solids, material_names=[""] * len(solids))
 geom_imprinted = geom.imprint()
