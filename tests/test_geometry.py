@@ -5,12 +5,37 @@ import stellarmesh as sm
 
 
 @pytest.fixture
+def geom_bd_sphere():
+    solids = [bd.Solid.make_sphere(10.0)]
+    return sm.Geometry(solids, ["a"])
+
+
+@pytest.fixture
+def geom_bd_nestedspheres():
+    s0 = bd.Solid.make_sphere(10.0)
+    s1 = s0.faces()[0].thicken(5.0)
+    return sm.Geometry([s0, s1], ["0", "1"])
+
+
+@pytest.fixture
+def geom_bd_imprintedboxes():
+    b1 = bd.Solid.make_box(10, 10, 10)
+    b2 = b1.transformed(offset=(0, 5, 10))
+
+    cmp_initial = bd.Compound.make_compound([b1, b2])
+    solids = cmp_initial.solids()
+    geom = sm.Geometry(solids, material_names=[""] * len(solids))
+    geom_imprinted = geom.imprint()
+    return geom_imprinted
+
+
+@pytest.fixture
 def geom_bd_layered_torus():
-    solids = [bd.Solid.make_torus(1000, 100)]
+    solids = [bd.Solid.make_torus(100, 10)]
     for _ in range(3):
-        solids.append(solids[-1].faces()[0].thicken(100))
+        solids.append(solids[-1].faces()[0].thicken(10))
     solids = solids[1:]
-    return solids
+    return sm.Geometry(solids, material_names=[""] * len(solids))
 
 
 @pytest.fixture

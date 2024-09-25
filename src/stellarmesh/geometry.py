@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Sequence, Union
+from typing import Protocol, Sequence, Union
 
 from OCP.BOPAlgo import BOPAlgo_MakeConnected
 from OCP.BRep import BRep_Builder
@@ -24,6 +24,12 @@ from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid
 logger = logging.getLogger(__name__)
 
 
+class Solid(Protocol):
+    """A Cadquery, build123d or other wrapper for an OCC TopoDS_Solid."""
+
+    wrapped: TopoDS_Shape | None
+
+
 class Geometry:
     """Geometry, representing an ordered list of solids, to be meshed."""
 
@@ -32,7 +38,7 @@ class Geometry:
 
     def __init__(
         self,
-        solids: Sequence[Union["bd.Solid", "cq.Solid", TopoDS_Solid]],  # noqa: F821
+        solids: Sequence[Union[Solid, TopoDS_Solid]],
         material_names: Sequence[str],
     ):
         """Construct geometry from solids.
