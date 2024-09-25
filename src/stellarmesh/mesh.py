@@ -124,7 +124,7 @@ class OCCSurfaceOptions:
     """OCC surface meshing options."""
 
     algorithm = OCCSurfaceAlgo.WATSON
-    tol_angular: float = 0.5
+    tol_angular: Optional[float] = 0.5
     tol_linear: Optional[float] = None
     min_mesh_size: Optional[float] = None
     relative: bool = False
@@ -137,8 +137,11 @@ class OCCSurfaceOptions:
 
         if self.tol_angular:
             params.Angle = self.tol_angular
+
         if self.tol_linear:
             params.Deflection = self.tol_linear
+        else:
+            params.Deflection = -1.0
 
         params.Relative = self.relative
         params.InParallel = True
