@@ -1,0 +1,13 @@
+name: stellarmesh
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+
+  # - openmc=0.15.2=dagmc_mpi_openmpi*
+  - openmc=0.15.2=dagmc_nompi*
+  - python-gmsh=4.13.1
+  - OCP=7.8.1.2
+  - build123d=0.9.1

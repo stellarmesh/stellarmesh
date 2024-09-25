@@ -21,6 +21,8 @@ with bd.BuildPart() as my_part:
     bd.sweep()
 
 geom = sm.Geometry(my_part.solids(), material_names=["hi"])
-mesh = sm.Mesh.from_geometry(geom, min_mesh_size=0.5, max_mesh_size=0.5)
+mesh = sm.SurfaceMesh.from_geometry(
+    geom, sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=0.5)
+)
 refined_mesh = mesh.refine(const_mesh_size=1, hausdorff_value=100)
 refined_mesh.write("refined.msh")

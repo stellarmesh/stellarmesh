@@ -21,6 +21,7 @@ import gmsh
 import meshio
 from OCP.BRep import BRep_Tool
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
+from OCP.BRepTools import BRepTools
 from OCP.IMeshTools import (
     IMeshTools_MeshAlgoType_Delabella,
     IMeshTools_MeshAlgoType_Watson,
@@ -72,13 +73,13 @@ class GmshSurfaceOptions:
         min_mesh_size: Min mesh element size.
         max_mesh_size: Max mesh element size.
         curvature_target: Target number of elements per 2pi radians.
-        algorithm: Gmsh meshing algorithm.
+        algorithm2d: Gmsh meshing algorithm.
     """
 
     min_mesh_size: Optional[float] = None
     max_mesh_size: Optional[float] = None
     curvature_target: Optional[float] = None
-    algorithm: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
+    algorithm2d: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
     _recombine: bool = False
 
     def set_options(self):
@@ -94,22 +95,24 @@ class GmshSurfaceOptions:
         if self.curvature_target:
             gmsh.option.set_number("Mesh.MeshSizeFromCurvature", self.curvature_target)
 
-        gmsh.option.set_number("Mesh.Algorithm", self.algorithm.value)
+        gmsh.option.set_number("Mesh.Algorithm", self.algorithm2d.value)
 
 
 @dataclass
-class GmshVolumeOptions:
+class GmshVolumeOptions(GmshSurfaceOptions):
     """Gmsh volume meshing options.
 
     See See https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options.
 
     Attributes:
-        algorithm: Gmsh volume meshing algorithm.
+        algorithm3d: Gmsh volume meshing algorithm.
     """
 
-    min_mesh_size: float
-    max_mesh_size: float
-    algorithm: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
+    algorithm3d: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
+
+    def set_options(self):
+        super().set_options()
+        gmsh.option.set_number("Mesh.Algorithm3D", self.algorithm3d.value)
 
 
 class OCCSurfaceAlgo(Enum):
@@ -119,26 +122,55 @@ class OCCSurfaceAlgo(Enum):
     DELABELLA = IMeshTools_MeshAlgoType_Delabella
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OCCSurfaceOptions:
-    """OCC surface meshing options."""
+    """OCC surface meshing options.
 
-    algorithm = OCCSurfaceAlgo.WATSON
-    tol_angular: float = 0.5
+    Attributes:
+        algorithm: The meshing algorithm to use. Defaults to WATSON.
+        tol_angular: Angular tolerance for meshing. Defaults to 0.5.
+        tol_linear: Linear tolerance for meshing. Defaults to None.
+        min_mesh_size: Minimum mesh size. Defaults to None.
+        relative: Whether to use relative tolerances. Defaults to False.
+        parallel: Whether to use parallel meshing. Defaults to True.
+    """
+
+    tol_angular_deg: Optional[float] = 0.5
     tol_linear: Optional[float] = None
     min_mesh_size: Optional[float] = None
+    algorithm: OCCSurfaceAlgo = OCCSurfaceAlgo.WATSON
     relative: bool = False
+    parallel: bool = True
 
-    def build_params(self) -> IMeshTools_Parameters:
+    def _build_params(self) -> IMeshTools_Parameters:
         """Build IMeshTools Parameters struct from values."""
-        params = IMeshTools_Parameters()
+        # NOTE(akoen)
+        # OCC parsing logic at https://github.com/Open-Cascade-SAS/OCCT/blob/783c3440b242277b52f822fde07515bb3aa7c49f/src/ModelingAlgorithms/TKMesh/BRepMesh/BRepMesh_IncrementalMesh.hxx#L105
+        # Intro article: https://unlimited3d.wordpress.com/2024/03/17/brepmesh-intro/
+        if self.tol_linear is None and self.tol_angular_deg is None:
+            raise ValueError(
+                "At least one of tol_linear or tol_angular_deg must be set."
+            )
 
+        params = IMeshTools_Parameters()
         params.MeshAlgo = self.algorithm.value
 
-        if self.tol_angular:
-            params.Angle = self.tol_angular
+        if self.tol_angular_deg:
+            params.Angle = self.tol_angular_deg
+        else:
+            params.Angle = float("inf")
+
         if self.tol_linear:
             params.Deflection = self.tol_linear
+        else:
+            params.Deflection = float("inf")
+
+        # NOTE(akoen): MinSize is by default 0.1 of Deflection---see OCC parsing logic
+        # above. If set to less than 1e-7 OCC treats as 0 and ignores.
+        if self.min_mesh_size:
+            params.MinSize = self.min_mesh_size
+        else:
+            params.MinSize = 1e-7
 
         params.Relative = self.relative
         params.InParallel = True
@@ -226,6 +258,7 @@ class Mesh:
         """
         with self:
             gmsh.option.set_number("Mesh.SurfaceFaces", 1)
+            gmsh.option.set_number("Mesh.VolumeFaces", 1)
             gmsh.option.set_number("Mesh.Clip", 1 if clipping else 0)
             gmsh.option.set_number("Mesh.Normals", normals)
             gmsh.option.set_number("General.Trackball", 0)
@@ -298,10 +331,18 @@ class SurfaceMesh(Mesh):
         cmp_builder.MakeCompound(cmp)
 
         for shape in geometry.solids:
+            # Remove any existing triangulation on the shape
+            explorer = TopExp_Explorer(shape, TopAbs_FACE)
+            while explorer.More():
+                face = TopoDS.Face_s(explorer.Current())
+                BRepTools.Clean_s(face)
+                explorer.Next()
+
             cmp_builder.Add(cmp, shape)
 
-        params = options.build_params()
+        params = options._build_params()
 
+        print(params.MinSize)
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
         loc = TopLoc_Location()
@@ -357,6 +398,16 @@ class SurfaceMesh(Mesh):
                 surface_tag, 2, [], [node_start + i for i in triangles]
             )
 
+    @staticmethod
+    def _import_occ(shape: TopoDS_Shape, *, native: bool = True) -> list[tuple]:
+        if native:
+            dim_tags = gmsh.model.occ.import_shapes_native_pointer(shape._address())
+            return dim_tags
+        with tempfile.NamedTemporaryFile(suffix=".brep") as tmp_file:
+            BRepTools.Write_s(shape, tmp_file.name)
+            dim_tags = gmsh.model.occ.import_shapes(tmp_file.name)
+            return dim_tags
+
     @classmethod
     def from_geometry(
         cls, geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions
@@ -375,7 +426,7 @@ class SurfaceMesh(Mesh):
 
             material_solid_map = {}
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
-                dim_tags = gmsh.model.occ.import_shapes_native_pointer(s._address())
+                dim_tags = cls._import_occ(s)
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
@@ -533,9 +584,7 @@ class VolumeMesh(Mesh):
 
             gmsh.model.occ.synchronize()
 
-            gmsh.option.set_number("Mesh.MeshSizeMin", options.min_mesh_size)
-            gmsh.option.set_number("Mesh.MeshSizeMax", options.max_mesh_size)
-            gmsh.option.set_number("Mesh.Algorithm", options.algorithm.value)
+            options.set_options()
             gmsh.model.mesh.generate(3)
 
             mesh._save_changes(save_all=True)

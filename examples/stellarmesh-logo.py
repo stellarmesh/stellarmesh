@@ -8,7 +8,7 @@ import stellarmesh as sm
 logging.getLogger("stellarmesh").setLevel(logging.INFO)
 
 cmp = bd.Compound.make_text("S", 14, font="Arial Black")
-solids = [f.thicken(0.01) for f in cmp.faces()]
+solids = [bd.Solid.thicken(f, 0.01) for f in cmp.faces()]
 
 geometry = sm.Geometry(solids, [""] * len(solids))
 mesh = sm.SurfaceMesh.from_geometry(geometry, sm.GmshSurfaceOptions(1, 2))

@@ -3,6 +3,9 @@
 .direnv/
 *.egg-info/
 .vscode/
+.devcontainer/
+
+.coverage
 *.h5m
 *.msh
 *.e

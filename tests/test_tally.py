@@ -1,6 +1,7 @@
 """Continuous integration tests with OpenMC."""
 
 import logging
+import random
 from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
@@ -11,6 +12,7 @@ import numpy as np
 import openmc
 import openmc.stats
 import pytest
+
 import stellarmesh as sm
 
 RELATIVE_TOLERANCE_PERCENT = 2.5 / 100
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class Model(ABC):
+    """CSG and DAGMC model representations with materials, tallies, and source."""
+
     @cached_property
     @abstractmethod
     def materials(self) -> openmc.Materials:
@@ -41,21 +45,20 @@ class Model(ABC):
         ...
 
     @abstractmethod
-    def dagmc(self) -> sm.DAGMCModel:
-        """Generate the DAGMC model."""
+    def cad(self) -> Sequence[bd.Solid]:
+        """Generate the CAD model."""
         ...
 
-    def _make_dagmc_model(
-        self,
-        solids: Sequence[bd.Solid],
-        materials: openmc.Materials,
-        min_mesh_size: float,
-        max_mesh_size,
-    ) -> sm.DAGMCModel:
+    def mesh(self) -> sm.SurfaceMesh:
+        """Generate the mesh."""
+        ...
         mat_names: list[str] = [m.name for m in self.materials]
+        solids = self.cad()
         geom = sm.Geometry(solids, mat_names)
-        msh = sm.SurfaceMesh.from_geometry(geom, sm.OCCSurfaceOptions(tol_angular=0.2))
-        return sm.DAGMCModel.from_mesh(msh)
+        msh = sm.SurfaceMesh.from_geometry(
+            geom, sm.OCCSurfaceOptions(tol_angular_deg=0.2)
+        )
+        return msh
 
 
 class NestedSpheres(Model):
@@ -100,10 +103,84 @@ class NestedSpheres(Model):
         csg_geometry = openmc.Geometry([cell1, cell2])
         return openmc.Model(geometry=csg_geometry)
 
-    def dagmc(self):
+    def cad(self):
         s1 = bd.Solid.make_sphere(self.radius1)
-        s2 = s1.faces()[0].thicken(self.radius2)
-        return self._make_dagmc_model([s1, s2], self.materials, 1, 1)
+        s2 = bd.Solid.thicken(s1.faces()[0], self.radius2)
+        return [s1, s2]
+
+
+class NestedCylinders(Model):
+    """Two nested cylinders."""
+
+    radius1 = 15
+    radius2 = 8
+    height1 = 15
+    height2 = 8
+
+    @cached_property
+    def materials(self):
+        mat1 = openmc.Material(name="1")
+        mat1.add_nuclide("Fe56", 1)
+        mat1.set_density("g/cm3", 1)
+
+        mat2 = openmc.Material(name="2")
+        mat2.add_nuclide("Be9", 1)
+        mat2.set_density("g/cm3", 1)
+        return openmc.Materials([mat1, mat2])
+
+    def tallies(self):
+        mat_filter = openmc.MaterialFilter(self.materials)
+        tally = openmc.Tally(name="flux_tally")
+        tally.filters = [mat_filter]
+        tally.scores = ["flux"]
+
+        return openmc.Tallies([tally])
+
+    def source(self):
+        source = openmc.IndependentSource()
+        source.space = openmc.stats.Point((0, 0, 0))
+        source.angle = openmc.stats.Isotropic()
+        source.energy = openmc.stats.Discrete([14e6], [1])
+        return source
+
+    def csg(self):
+        surface1 = openmc.ZCylinder(
+            r=self.radius1,
+        )
+        zmin1 = openmc.ZPlane(
+            z0=-self.height1 / 2,
+        )
+        zmax1 = openmc.ZPlane(
+            z0=self.height1 / 2,
+        )
+        surface2 = openmc.ZCylinder(
+            r=self.radius1 + self.radius2, boundary_type="vacuum"
+        )
+        zmin2 = openmc.ZPlane(
+            z0=-(self.height1 + self.height2) / 2, boundary_type="vacuum"
+        )
+        zmax2 = openmc.ZPlane(
+            z0=(self.height1 + self.height2) / 2, boundary_type="vacuum"
+        )
+
+        region1 = -surface1 & +zmin1 & -zmax1
+        region2 = ~region1 & (-surface2 & +zmin2 & -zmax2)
+
+        cell1 = openmc.Cell(fill=self.materials[0], region=region1)
+        cell2 = openmc.Cell(fill=self.materials[1], region=region2)
+
+        csg_geometry = openmc.Geometry([cell1, cell2])
+        return openmc.Model(geometry=csg_geometry)
+
+    def cad(self):
+        s1 = bd.Cylinder(self.radius1, self.height1, align=bd.Align.CENTER).solid()
+        s2 = bd.Cylinder(
+            self.radius1 + self.radius2,
+            self.height1 + self.height2,
+            align=bd.Align.CENTER,
+        ).solid() # type: ignore
+        s2: bd.Solid = s2.cut(s1)  # type: ignore
+        return [s1, s2]
 
 
 class Torus(Model):
@@ -135,25 +212,40 @@ class Torus(Model):
             openmc.stats.Discrete([0], [1]),
         )
         source.energy = openmc.stats.Discrete([14e6], [1])
+
         return source
 
     def csg(self):
-        surface = openmc.ZTorus(
+        torus_surface = openmc.ZTorus(
             a=self.major_radius,
             b=self.minor_radius,
             c=self.minor_radius,
-            boundary_type="vacuum",
         )
-        cell = openmc.Cell(fill=self.materials[0], region=-surface)
-        csg_geometry = openmc.Geometry([cell])
+        torus_cell = openmc.Cell(fill=self.materials[0], region=-torus_surface)
+
+        # Create a bounding box to allow torus re-entry
+        box_half_side = self.major_radius + self.minor_radius + 5.0  # Add a buffer
+        xmin = openmc.XPlane(-box_half_side, boundary_type="vacuum")
+        xmax = openmc.XPlane(box_half_side, boundary_type="vacuum")
+        ymin = openmc.YPlane(-box_half_side, boundary_type="vacuum")
+        ymax = openmc.YPlane(box_half_side, boundary_type="vacuum")
+        zmin = openmc.ZPlane(-box_half_side, boundary_type="vacuum")
+        zmax = openmc.ZPlane(box_half_side, boundary_type="vacuum")
+        bounding_box_region = +xmin & -xmax & +ymin & -ymax & +zmin & -zmax
+
+        void_region = bounding_box_region & +torus_surface
+        void_cell = openmc.Cell(fill=None, region=void_region)
+
+        csg_geometry = openmc.Geometry([torus_cell, void_cell])
+
         return openmc.Model(geometry=csg_geometry)
 
-    def dagmc(self):
+    def cad(self):
         s1 = bd.Solid.make_torus(self.major_radius, self.minor_radius)
-        return self._make_dagmc_model([s1], self.materials, 0.01, 0.5)
+        return [s1]
 
 
-@pytest.mark.parametrize("model_cls", [NestedSpheres, Torus])
+@pytest.mark.parametrize("model_cls", [NestedSpheres, NestedCylinders, Torus])
 def test_model(model_cls: Type[Model], tmp_path: Path):
     openmc.reset_auto_ids()
     model = model_cls()
@@ -165,13 +257,18 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
     settings.run_mode = "fixed source"
     settings.source = model.source()
 
+    settings.seed = random.randint(0, 2**31 - 1)
+
     tallies = model.tallies()
     csg_model = model.csg()
     csg_model.materials = model.materials
     csg_model.tallies = tallies
     csg_model.settings = settings
 
-    model.dagmc().write(str(tmp_path / "dagmc.h5m"))
+    msh = model.mesh()
+    sm_dagmc_model = sm.DAGMCModel.from_mesh(msh)
+    sm_dagmc_model.write(str(tmp_path / "dagmc.h5m"))
+    logger.info(f"DAGMC model written to {tmp_path / 'dagmc.h5m'}")
     universe = openmc.DAGMCUniverse(tmp_path / "dagmc.h5m").bounded_universe()
     dagmc_geometry = openmc.Geometry(universe)
     dagmc_model = openmc.Model(geometry=dagmc_geometry)
@@ -179,10 +276,12 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
     dagmc_model.tallies = tallies
     dagmc_model.settings = settings
 
+    logger.info("Running CSG model")
     csg_model.export_to_model_xml(path=str(tmp_path))
     output_file_from_csg = csg_model.run(cwd=str(tmp_path / "csg"))
     logger.info(output_file_from_csg)
 
+    logger.info("Running DAGMC model")
     dagmc_model.export_to_model_xml(path=str(tmp_path))
     output_file_from_cad = dagmc_model.run(cwd=str(tmp_path / "cad"))
     logger.info(output_file_from_cad)
@@ -197,6 +296,11 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
             logger.info(f"Comparing tally: {tally.name}")
             logger.info(f"CSG result: {csg_tally.mean}")
             logger.info(f"CAD result: {cad_tally.mean}")
+            logger.info(
+                f"Difference: {((cad_tally.mean - csg_tally.mean) / csg_tally.mean * 100)[0, 0, 0]:.2f}%"
+            )
+
+            logger.debug(msh._mesh_filename)
             assert np.allclose(
                 csg_tally.mean, cad_tally.mean, rtol=RELATIVE_TOLERANCE_PERCENT
             )
