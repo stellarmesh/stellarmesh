@@ -22,7 +22,7 @@ def test_mesh_geometry_3d(geom_bd_sphere):
     sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, dim=3)
 
 
-def test_mesh_scale_factor(geom_bd_sphere):
+def test_scale_factor(geom_bd_sphere):
     mesh = sm.Mesh.from_geometry(geom_bd_sphere, 5, 5, scale_factor=0.1)
 
     # Get coordinates of mesh nodes and shape into (N, 3)
