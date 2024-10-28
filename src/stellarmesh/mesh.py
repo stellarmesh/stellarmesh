@@ -85,6 +85,7 @@ class Mesh:
         dim: int = 2,
         *,
         num_threads: Optional[int] = None,
+        scale_factor: Optional[float] = None,
     ) -> Mesh:
         """Mesh solids with Gmsh.
 
@@ -120,6 +121,15 @@ class Mesh:
                     material_solid_map[m].append(solid_tag)
 
             gmsh.model.occ.synchronize()
+
+            # Scale volumes is scaling factor was specified
+            if scale_factor is not None:
+                logger.info(f"Scaling volumes by factor {scale_factor}")
+                all_volumes = gmsh.model.getEntities(dim=3)
+                gmsh.model.occ.dilate(
+                    all_volumes, 0.0, 0.0, 0.0, scale_factor, scale_factor, scale_factor
+                )
+                gmsh.model.occ.synchronize()
 
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
