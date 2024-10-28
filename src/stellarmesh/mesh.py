@@ -77,7 +77,7 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def from_geometry(
+    def from_geometry(  # noqa: PLR0913
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
@@ -97,8 +97,9 @@ class Mesh:
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
             dim: Generate a mesh up to this dimension. Defaults to 2.
-            num_threads: Max number of threads to use when GMSH compiled with OpenMP
+            num_threads: Max number of threads to use when Gmsh compiled with OpenMP
             support. 0 for system default i.e. OMP_NUM_THREADS. Defaults to None.
+            scale_factor: Scaling factor for geometry. Defaults to None.
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
