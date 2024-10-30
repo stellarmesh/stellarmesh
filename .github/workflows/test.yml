@@ -30,7 +30,7 @@ jobs:
       - name: Set up conda dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
-          micromamba install -c conda-forge -c cadquery python=${{ matrix.python-version }} moab openmc=0.15.0=dagmc*nompi* cadquery=master
+          micromamba install -c conda-forge -c cadquery python=${{ matrix.python-version }} moab openmc=0.15.0=dagmc*nompi* cadquery=master python-gmsh
 
       - name: Install dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
