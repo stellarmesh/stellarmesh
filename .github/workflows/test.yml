@@ -37,6 +37,11 @@ jobs:
         run: |
           python -m pip install -r requirements.ci.txt
 
+      - name: Reinstall gmsh via conda-forge
+        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
+        run: |
+          micromamba install -c conda-forge -c cadquery python-gmsh --force-reinstall -y
+
       - name: Download OpenMC data
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
