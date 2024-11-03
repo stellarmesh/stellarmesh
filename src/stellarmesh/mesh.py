@@ -126,7 +126,7 @@ class Mesh:
             # Scale volumes is scaling factor was specified
             if scale_factor is not None:
                 logger.info(f"Scaling volumes by factor {scale_factor}")
-                dim_tags = gmsh.model.getEntities(dim=dim)
+                dim_tags = gmsh.model.getEntities(dim=3)
                 gmsh.model.occ.dilate(
                     dim_tags, 0.0, 0.0, 0.0, scale_factor, scale_factor, scale_factor
                 )
