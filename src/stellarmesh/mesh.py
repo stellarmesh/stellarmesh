@@ -77,7 +77,7 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def from_geometry(
+    def from_geometry(  # noqa: PLR0913
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
@@ -85,6 +85,7 @@ class Mesh:
         dim: int = 2,
         *,
         num_threads: Optional[int] = None,
+        scale_factor: Optional[float] = None,
     ) -> Mesh:
         """Mesh solids with Gmsh.
 
@@ -96,8 +97,9 @@ class Mesh:
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
             dim: Generate a mesh up to this dimension. Defaults to 2.
-            num_threads: Max number of threads to use when GMSH compiled with OpenMP
+            num_threads: Max number of threads to use when Gmsh compiled with OpenMP
             support. 0 for system default i.e. OMP_NUM_THREADS. Defaults to None.
+            scale_factor: Scaling factor for geometry. Defaults to None.
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
@@ -120,6 +122,15 @@ class Mesh:
                     material_solid_map[m].append(solid_tag)
 
             gmsh.model.occ.synchronize()
+
+            # Scale volumes is scaling factor was specified
+            if scale_factor is not None:
+                logger.info(f"Scaling volumes by factor {scale_factor}")
+                dim_tags = gmsh.model.getEntities(dim=3)
+                gmsh.model.occ.dilate(
+                    dim_tags, 0.0, 0.0, 0.0, scale_factor, scale_factor, scale_factor
+                )
+                gmsh.model.occ.synchronize()
 
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
