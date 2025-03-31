@@ -175,11 +175,9 @@ class Mesh:
             FutureWarning,
             stacklevel=2,
         )
-        return cls.from_geometry(geometry,
-                                 min_mesh_size,
-                                 max_mesh_size,
-                                 curvature_mesh_size,
-                                 dim)
+        return cls.from_geometry(
+            geometry, min_mesh_size, max_mesh_size, curvature_mesh_size, dim
+        )
 
     def render(
         self,
