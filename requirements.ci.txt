@@ -1,4 +1,5 @@
 # Use requirements.txt as PyPi will not accept a git dependency
 .
 pytest
+pymmg
 openmc_data_downloader
