@@ -30,7 +30,7 @@ jobs:
       - name: Set up conda dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
-          micromamba install -c conda-forge -c cadquery python=${{ matrix.python-version }} moab openmc=0.15.0=dagmc*nompi* cadquery=master python-gmsh
+          micromamba install -c conda-forge python=${{ matrix.python-version }} moab openmc=0.15.0=dagmc*nompi* cadquery python-gmsh
 
       - name: Install dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
@@ -40,7 +40,7 @@ jobs:
       - name: Reinstall gmsh via conda-forge
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
-          micromamba install -c conda-forge -c cadquery python-gmsh --force-reinstall -y
+          micromamba install -c conda-forge python-gmsh --force-reinstall -y
 
       - name: Download OpenMC data
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
