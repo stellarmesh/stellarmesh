@@ -3,3 +3,4 @@
 pytest
 pymmg
 openmc_data_downloader
+retry
