@@ -4,7 +4,7 @@ version = "1.0.0.dev1"
 authors = [{ name = "Alex Koen" }]
 description = "Gmsh wrapper and DAGMC geometry creator."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "pymmg",
@@ -16,7 +16,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 extend-include = ["*.ipynb"]
 
 
@@ -48,4 +48,12 @@ pydocstyle.convention = "google"
 
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
+
+[dependency-groups]
+dev = [
+    "ocp-vscode>=2.9.0",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.8",
+]
