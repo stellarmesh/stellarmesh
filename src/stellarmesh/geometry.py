@@ -12,14 +12,19 @@ import logging
 import warnings
 from typing import Protocol, Sequence, Union
 
-from OCP.BOPAlgo import BOPAlgo_MakeConnected
-from OCP.BRep import BRep_Builder
-from OCP.BRepTools import BRepTools
-from OCP.IFSelect import IFSelect_RetDone
-from OCP.STEPControl import STEPControl_Reader
-from OCP.TopAbs import TopAbs_ShapeEnum
-from OCP.TopExp import TopExp_Explorer
-from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid
+try:
+    from OCP.BOPAlgo import BOPAlgo_MakeConnected
+    from OCP.BRep import BRep_Builder
+    from OCP.BRepTools import BRepTools
+    from OCP.IFSelect import IFSelect_RetDone
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.TopAbs import TopAbs_ShapeEnum
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid
+except ImportError as e:
+    raise ImportError(
+        "OCP not found. See Stellarmesh installation instructions."
+    ) from e
 
 logger = logging.getLogger(__name__)
 

@@ -54,6 +54,7 @@ def test_surface_mesh_num_elements(
         f"({num_elements_gmsh}) for model {model_name}. Mesh: {mesh_gmsh._mesh_filename}"
     )
 
+
 @pytest.mark.parametrize(
     "model_name,num_elements_gmsh",
     [
@@ -93,25 +94,35 @@ def geom_imprintedboxes(model_bd_offsetboxes):
 
 
 def test_mesh_geom_imprintedboxes(geom_imprintedboxes):
-    options = [("OCC", sm.OCCSurfaceOptions(tol_angular_deg=1)), ("GMSH", sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2))]
-    for (backend, option) in options:
+    options = [
+        ("OCC", sm.OCCSurfaceOptions(tol_angular_deg=1)),
+        ("GMSH", sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2)),
+    ]
+    for backend, option in options:
         mesh = sm.SurfaceMesh.from_geometry(
             geom_imprintedboxes,
             option,
         )
         with mesh:
             surface_tags = gmsh.model.get_entities(2)
-            assert len(surface_tags) == 13, f"Number of surfaces in {backend} mesh ({len(surface_tags)}) does not match expected (13). Mesh: {mesh._mesh_filename}"
+            assert len(surface_tags) == 13, (
+                f"Number of surfaces in {backend} mesh ({len(surface_tags)}) does not match expected (13). Mesh: {mesh._mesh_filename}"
+            )
 
 
 def test_mesh_volume_imprintedboxes(geom_imprintedboxes):
-    mesh = sm.VolumeMesh.from_geometry(geom_imprintedboxes, sm.GmshVolumeOptions(0.5, 2))
+    mesh = sm.VolumeMesh.from_geometry(
+        geom_imprintedboxes, sm.GmshVolumeOptions(0.5, 2)
+    )
     with mesh:
         volume_tags = gmsh.model.get_entities(3)
-        assert len(volume_tags) == 2, f"Number of volumes ({len(volume_tags)}) does not match expected (2). Mesh: {mesh._mesh_filename}"
+        assert len(volume_tags) == 2, (
+            f"Number of volumes ({len(volume_tags)}) does not match expected (2). Mesh: {mesh._mesh_filename}"
+        )
         surface_tags = gmsh.model.get_entities(2)
-        assert len(surface_tags) == 13, f"Number of surfaces ({len(surface_tags)}) does not match expected (13). Mesh: {mesh._mesh_filename}"
-
+        assert len(surface_tags) == 13, (
+            f"Number of surfaces ({len(surface_tags)}) does not match expected (13). Mesh: {mesh._mesh_filename}"
+        )
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
@@ -119,4 +130,4 @@ def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
         model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
     )
     mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(0.5, 2))
-    mesh.write(tmp_path / "out.e")
+    mesh.write(tmp_path / "out.exo")

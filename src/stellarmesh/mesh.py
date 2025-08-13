@@ -17,23 +17,36 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-import gmsh
 import meshio
-from OCP.BRep import BRep_Tool
-from OCP.BRepMesh import BRepMesh_IncrementalMesh
-from OCP.BRepTools import BRepTools
-from OCP.IMeshTools import (
-    IMeshTools_MeshAlgoType_Delabella,
-    IMeshTools_MeshAlgoType_Watson,
-    IMeshTools_Parameters,
-)
-from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
-from OCP.TopExp import TopExp_Explorer
-from OCP.TopLoc import TopLoc_Location
-from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
 
 from ._core import PathLike
 from .geometry import Geometry
+
+try:
+    import gmsh
+except ImportError as e:
+    raise ImportError(
+        "Gmsh not found. See Stellarmesh installation instructions."
+    ) from e
+
+try:
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.BRepTools import BRepTools
+    from OCP.IMeshTools import (
+        IMeshTools_MeshAlgoType_Delabella,
+        IMeshTools_MeshAlgoType_Watson,
+        IMeshTools_Parameters,
+    )
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopLoc import TopLoc_Location
+    from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
+except ImportError as e:
+    raise ImportError(
+        "OCP not found. See Stellarmesh installation instructions."
+    ) from e
+
 
 logger = logging.getLogger(__name__)
 

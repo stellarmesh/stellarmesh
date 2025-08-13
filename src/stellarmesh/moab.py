@@ -16,14 +16,27 @@ import warnings
 from functools import cached_property
 from typing import Optional, Union
 
-import gmsh
 import numpy as np
-import pymoab.core
-import pymoab.types
-from pymoab.rng import Range
 
 from ._core import PathLike
 from .mesh import Mesh
+
+try:
+    import gmsh
+except ImportError as e:
+    raise ImportError(
+        "Gmsh not found. See Stellarmesh installation instructions."
+    ) from e
+
+
+try:
+    import pymoab.core
+    import pymoab.types
+    from pymoab.rng import Range
+except ImportError as e:
+    raise ImportError(
+        "PyMOAB not found. See Stellarmesh installation instructions."
+    ) from e
 
 logger = logging.getLogger(__name__)
 
