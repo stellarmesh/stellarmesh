@@ -9,9 +9,7 @@ def model():
     solid1 = bd.Solid.make_sphere(10.0)
     solid2 = bd.thicken(solid1.faces()[0], 10.0)
     geom = sm.Geometry([solid1, solid2], ["iron", "iron"])
-    mesh = sm.SurfaceMesh.from_geometry(
-        geom, sm.GmshSurfaceOptions(max_mesh_size=5)
-    )
+    mesh = sm.SurfaceMesh.from_geometry(geom, sm.GmshSurfaceOptions(max_mesh_size=5))
     return sm.DAGMCModel.from_mesh(mesh)
 
 
