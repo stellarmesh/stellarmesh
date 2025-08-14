@@ -234,7 +234,9 @@ class Mesh:
         gmsh.write(self._mesh_filename)
 
     def write(self, filename: PathLike, *, save_all: bool = True):
-        """Write mesh to a .msh file.
+        """Write mesh to a file.
+
+        If Gmsh cannot handle the file format, writing will be deferred to meshio.
 
         Args:
             filename: Path to write file.
@@ -244,8 +246,9 @@ class Mesh:
         with self:
             gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
             try:
-                gmsh.write(filename)
+                gmsh.write(str(filename))
             except Exception:
+                logger.info(f"Using meshio to write {filename}")
                 with tempfile.NamedTemporaryFile(suffix=".msh") as tmp_mesh:
                     gmsh.write(tmp_mesh.name)
                     mesh = meshio.read(tmp_mesh.name)
