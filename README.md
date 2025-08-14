@@ -4,23 +4,21 @@
 
 [![Tests](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg)](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml)
 
-:warning: Stellarmesh is now a community project. Breaking changes are expected until version 1.0
-
 :warning: See [logging](#logging) to enable logging output when using Jupyter.
 
-Stellarmesh is a meshing library for nuclear workflows. Principally, it supports the creation of DAGMC geometry from CAD models. Stellarmesh is developed by the original authors of [Thea-Energy/stellarmesh](https://github.com/Thea-Energy/stellarmesh), [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc), and [CAD-to-OpenMC](https://github.com/openmsr/CAD_to_OpenMC).
+Stellarmesh is a meshing library for nuclear workflows. Principally, it supports the creation of DAGMC geometry from CAD models.
 
 
 **Features**:
 
 - [x] Import of [CadQuery](https://github.com/CadQuery/cadquery), [build123d](https://github.com/gumyr/build123d), STEP and BREP geometry
-- [x] Correct implementation of surface-sense
+- [x] Surface and volume meshing
+- [x] Both Gmsh and OpenCASCADE meshing backends
+- [x] Linear and angular mesh tolerances
 - [x] Imprinting and merging of conformal geometry
 - [x] Mesh refinement
 - [x] Automated testing and integration
-- [x] Programatic manipulation of .h5m tags e.g. materials
-
-See the project [Roadmap](https://github.com/orgs/stellarmesh/projects/1).
+- [x] Programatic manipulation of .h5m tags
 
 # Contents
 - [Contents](#contents)
@@ -44,7 +42,7 @@ or install the development version with:
 pip install git+https://github.com/stellarmesh/stellarmesh
 ```
 
-*Note: Stellarmesh requires an installation of [MOAB](https://bitbucket.org/fathomteam/moab) with pymoab, which is not available on PyPi and must be installed either from source or using Conda.*
+Stellarmesh requires several dependencies that must be installed either from source or from conda-forge. At a minimum, these are `moab`, `python-gmsh`, and `OCP`. However, most users will likely also want `build123d` for geometry construction and `openmc` for simulation. See [environment.yml](environment.yml) for a sample conda environment with these additional dependencies.
 
 # Usage
 ## Geometry construction
