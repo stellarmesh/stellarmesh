@@ -19,23 +19,33 @@ jobs:
         python-version: ["3.11"]
 
     steps:
+      # TODO(akoen): Can we skip these with a different image?
       - name: Install system packages
         run: |
           apt update
-          apt install -y git libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
+          apt install -y nodejs npm git libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
+          # apt install -y nodejs npm libgmsh4.8
 
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache Conda packages
+        uses: actions/cache@v4
+        with:
+          path: /opt/conda/pkgs
+          key: ${{ runner.os }}-python-${{ matrix.python-version }}-conda-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ matrix.python-version }}-conda-
+
       - name: Set up conda dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
-          micromamba install -c conda-forge python=${{ matrix.python-version }} moab openmc=0.15.0=dagmc*nompi*
+          micromamba install -c conda-forge python=${{ matrix.python-version }} -f environment.yml
 
       - name: Install dependencies
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         run: |
-          python -m pip install -r requirements.ci.txt
+          python -m pip install . pytest openmc_data_downloader
 
       - name: Download OpenMC data
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
@@ -45,6 +55,6 @@ jobs:
       - name: Test with pytest
         shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
         env:
-          OPENMC_CROSS_SECTIONS: /home/runner/work/stellarmesh/stellarmesh/cross_sections.xml
+          OPENMC_CROSS_SECTIONS: ${{ github.workspace }}/cross_sections.xml
         run: |
           python -m pytest --log-cli-level=INFO
