@@ -296,9 +296,6 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
             logger.info(f"Comparing tally: {tally.name}")
             logger.info(f"CSG result: {csg_tally.mean}")
             logger.info(f"CAD result: {cad_tally.mean}")
-            logger.info(
-                f"Difference: {((cad_tally.mean - csg_tally.mean) / csg_tally.mean * 100)[0, 0, 0]:.2f}%"
-            )
 
             logger.debug(msh._mesh_filename)
             assert np.allclose(

@@ -3,6 +3,7 @@
 import logging
 
 import build123d as bd
+
 import stellarmesh as sm
 
 logging.getLogger("stellarmesh").setLevel(logging.INFO)
