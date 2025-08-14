@@ -76,7 +76,7 @@ class GmshVolumeAlgo(Enum):
     HXT = 10
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GmshSurfaceOptions:
     """Gmsh surface meshing options.
 
@@ -87,12 +87,15 @@ class GmshSurfaceOptions:
         max_mesh_size: Max mesh element size.
         curvature_target: Target number of elements per 2pi radians.
         algorithm2d: Gmsh meshing algorithm.
+        num_threads: Max number of threads to use when GMSH compiled with OpenMP
+        support. 0 for system default i.e. OMP_NUM_THREADS. Defaults to None.
     """
 
     min_mesh_size: Optional[float] = None
     max_mesh_size: Optional[float] = None
     curvature_target: Optional[float] = None
     algorithm2d: GmshSurfaceAlgo = GmshSurfaceAlgo.AUTOMATIC
+    num_threads: Optional[int] = None
     _recombine: bool = False
 
     def set_options(self):
@@ -108,10 +111,13 @@ class GmshSurfaceOptions:
         if self.curvature_target:
             gmsh.option.set_number("Mesh.MeshSizeFromCurvature", self.curvature_target)
 
+        if self.num_threads:
+            gmsh.option.set_number("General.NumThreads", self.num_threads)
+
         gmsh.option.set_number("Mesh.Algorithm", self.algorithm2d.value)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GmshVolumeOptions(GmshSurfaceOptions):
     """Gmsh volume meshing options.
 

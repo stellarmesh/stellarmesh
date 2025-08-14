@@ -131,3 +131,13 @@ def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
     )
     mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(0.5, 2))
     mesh.write(tmp_path / "out.exo")
+
+
+def test_gmsh_threads(model_bd_layered_torus, tmp_path: Path):
+    geom = sm.Geometry(
+        model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
+    )
+    mesh = sm.SurfaceMesh.from_geometry(
+        geom,
+        sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2, num_threads=8),
+    )
