@@ -178,7 +178,7 @@ class NestedCylinders(Model):
             self.radius1 + self.radius2,
             self.height1 + self.height2,
             align=bd.Align.CENTER,
-        ).solid() # type: ignore
+        ).solid()  # type: ignore
         s2: bd.Solid = s2.cut(s1)  # type: ignore
         return [s1, s2]
 

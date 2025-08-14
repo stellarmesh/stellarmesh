@@ -28,6 +28,7 @@ def model_bd_layered_torus():
 def model_ocp_layered_torus(model_bd_layered_torus):
     return [s.wrapped for s in model_bd_layered_torus]
 
+
 @pytest.fixture
 def model_bd_offsetboxes():
     b1 = bd.Solid.make_box(10, 10, 10)
@@ -36,9 +37,12 @@ def model_bd_offsetboxes():
 
     return [b1, b2]
 
+
 @pytest.fixture
 def geom_imprintedboxes(model_bd_offsetboxes):
-    geom = sm.Geometry(model_bd_offsetboxes, material_names=[""] * len(model_bd_offsetboxes))
+    geom = sm.Geometry(
+        model_bd_offsetboxes, material_names=[""] * len(model_bd_offsetboxes)
+    )
     geom_imprinted = geom.imprint()
     return geom_imprinted
 

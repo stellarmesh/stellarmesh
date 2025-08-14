@@ -24,7 +24,6 @@ jobs:
         run: |
           apt update
           apt install -y nodejs npm git libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
-          # apt install -y nodejs npm libgmsh4.8
 
       - name: Checkout code
         uses: actions/checkout@v4
