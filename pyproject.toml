@@ -11,6 +11,16 @@ dependencies = [
     "meshio[all]",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "cadquery-ocp-stubs==7.8.1.1.post1",
+    "ocp-vscode>=2.9.0",
+    "pip>=25.2",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.8",
+]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
@@ -50,10 +60,4 @@ pydocstyle.convention = "google"
 [tool.pyright]
 pythonVersion = "3.11"
 
-[dependency-groups]
-dev = [
-    "ocp-vscode>=2.9.0",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
-    "ruff>=0.12.8",
-]
+

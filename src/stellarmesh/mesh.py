@@ -41,7 +41,7 @@ try:
     from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound
+    from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound, TopoDS_Shape
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."
@@ -124,6 +124,7 @@ class GmshVolumeOptions(GmshSurfaceOptions):
     algorithm3d: GmshVolumeAlgo = GmshVolumeAlgo.DELAUNAY
 
     def set_options(self):
+        """Set corresponding Gmsh options."""
         super().set_options()
         gmsh.option.set_number("Mesh.Algorithm3D", self.algorithm3d.value)
 

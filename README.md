@@ -2,6 +2,8 @@
 <img src="https://github.com/Thea-Energy/stellarmesh/raw/main/doc/logo.png" width="80%">
 </p>
 
+[![Tests](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg)](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml)
+
 :warning: Stellarmesh is now a community project. Breaking changes are expected until version 1.0
 
 :warning: See [logging](#logging) to enable logging output when using Jupyter.
