@@ -112,7 +112,7 @@ def test_mesh_geom_imprintedboxes(geom_imprintedboxes):
 
 def test_mesh_volume_imprintedboxes(geom_imprintedboxes):
     mesh = sm.VolumeMesh.from_geometry(
-        geom_imprintedboxes, sm.GmshVolumeOptions(0.5, 2)
+        geom_imprintedboxes, sm.GmshVolumeOptions(min_mesh_size=0.5, max_mesh_size=2)
     )
     with mesh:
         volume_tags = gmsh.model.get_entities(3)
