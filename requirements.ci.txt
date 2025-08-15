@@ -1,4 +1,6 @@
 # Use requirements.txt as PyPi will not accept a git dependency
+.
 pytest
-pymmg
+build123d
+cadquery
 openmc_data_downloader
