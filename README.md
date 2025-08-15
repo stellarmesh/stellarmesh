@@ -4,8 +4,6 @@
 
 [![Tests](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg)](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml)
 
-:warning: See [logging](#logging) to enable logging output when using Jupyter.
-
 Stellarmesh is a meshing library for nuclear workflows. Principally, it supports the creation of DAGMC geometry from CAD models.
 
 
@@ -13,12 +11,12 @@ Stellarmesh is a meshing library for nuclear workflows. Principally, it supports
 
 - [x] Import of [CadQuery](https://github.com/CadQuery/cadquery), [build123d](https://github.com/gumyr/build123d), STEP and BREP geometry
 - [x] Surface and volume meshing
-- [x] Both Gmsh and OpenCASCADE meshing backends
+- [x] Gmsh and OpenCASCADE meshing backends
 - [x] Linear and angular mesh tolerances
 - [x] Imprinting and merging of conformal geometry
 - [x] Mesh refinement
-- [x] Automated testing and integration
 - [x] Programatic manipulation of .h5m tags
+- [x] Automated testing and integration
 
 # Contents
 - [Contents](#contents)
@@ -32,39 +30,41 @@ Stellarmesh is a meshing library for nuclear workflows. Principally, it supports
   - [Mesh refinement](#mesh-refinement)
 
 # Installation
+
+Stellarmesh requires several dependencies that must be installed either from source or from conda-forge. At a minimum, these are `moab`, `python-gmsh`, and `OCP`. However, most users will likely also want `build123d` for geometry construction and `openmc` for simulation. See [environment.yml](environment.yml) for a sample conda environment.
+
+From there, Stellarmesh can be installed from PyPI.
+
 ```sh
 pip install stellarmesh
 ```
 
-or install the development version with:
-
-```sh
-pip install git+https://github.com/stellarmesh/stellarmesh
-```
-
-Stellarmesh requires several dependencies that must be installed either from source or from conda-forge. At a minimum, these are `moab`, `python-gmsh`, and `OCP`. However, most users will likely also want `build123d` for geometry construction and `openmc` for simulation. See [environment.yml](environment.yml) for a sample conda environment with these additional dependencies.
+> [!WARNING]
+> While OCP and Gmsh can both be installed from PyPI, they are not ABI compatible. Usage of these packages will result in errors for some geometries.
 
 # Usage
+
+For documentation and usage examples, see the [examples](examples/) and [tutorials](tutorials/) folders.
+
 ## Geometry construction
 Stellarmesh supports both [build123d](https://github.com/gumyr/build123d) (recommended) and [CadQuery](https://github.com/CadQuery/cadquery) for geometry construction but does not depend on either.
 
-The included examples use build123d. To install, run:
+The included examples use build123d, which can be installed from [conda-forge](https://anaconda.org/conda-forge/build123d).
 
-```python
-pip install build123d
-```
 
-For documentation and usage examples, see [Read the Docs](https://build123d.readthedocs.io/en/latest/).
-
-## Meshing backend
+## Meshing
 
 Stellarmesh supports surface meshing with both OCC and Gmsh backends.
 
-### OOC
+### OCC
 
+The OpenCASCADE (OCC) meshing backend is the preferred backend when linear or angular mesh tolerances are required.
 
+### Gmsh
 
-## Examples
+The Gmsh meshing backend offers a number of meshing algorithms for both surface and volume meshes. More detailed documentation, see [gmsh.info](https://gmsh.info/doc/texinfo/gmsh.html).
+
+## Example
 
 ### Simple torus geometry
 ```python
@@ -73,11 +73,13 @@ import stellarmesh as sm
 
 solids = [bd.Solid.make_torus(1000, 100)]
 for _ in range(3):
-    solids.append(solids[-1].faces()[0].thicken(100))
+    solids.append(bd.Solid.thicken(solids[-1].faces()[0], 100))
 solids = solids[1:]
 
-geometry = sm.Geometry(solids, material_names=["a", "a", "c"])
-mesh = sm.Mesh.from_geometry(geometry, min_mesh_size=50, max_mesh_size=50)
+geometry = sm.Geometry(solids[::-1], material_names=["a", "a", "c"])
+mesh = sm.SurfaceMesh.from_geometry(
+    geometry, sm.GmshSurfaceOptions(min_mesh_size=50, max_mesh_size=200)
+)
 mesh.write("test.msh")
 mesh.render("doc/torus-mesh-reversed.png", rotation_xyz=(90, 0, -90), normals=15)
 
