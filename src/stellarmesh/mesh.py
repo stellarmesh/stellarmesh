@@ -77,16 +77,12 @@ class Mesh:
             gmsh.write(filename)
 
     @classmethod
-    def from_geometry(  # noqa: PLR0913
+    def from_geometry(
         cls,
         geometry: Geometry,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
-        curvature_mesh_size: int = 0,
         dim: int = 2,
-        *,
-        num_threads: Optional[int] = None,
-        scale_factor: Optional[float] = None,
     ) -> Mesh:
         """Mesh solids with Gmsh.
 
@@ -97,20 +93,11 @@ class Mesh:
             geometry: Geometry to be meshed.
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
-            curvature_mesh_size: If set to a positive value, the mesh will be
-            adapted with respect to the curvature of the model entities. The value
-            giving the target number of elements per 2 Pi radians. Defaults to 0.
             dim: Generate a mesh up to this dimension. Defaults to 2.
-            num_threads: Max number of threads to use when Gmsh compiled with OpenMP
-            support. 0 for system default i.e. OMP_NUM_THREADS. Defaults to None.
-            scale_factor: Scaling factor for geometry. Defaults to None.
         """
         logger.info(f"Meshing solids with mesh size {min_mesh_size}, {max_mesh_size}")
 
         with cls() as mesh:
-            if num_threads:
-                gmsh.option.set_number("General.NumThreads", num_threads)
-
             gmsh.model.add("stellarmesh_model")
 
             material_solid_map = {}
@@ -127,21 +114,11 @@ class Mesh:
 
             gmsh.model.occ.synchronize()
 
-            # Scale volumes is scaling factor was specified
-            if scale_factor is not None:
-                logger.info(f"Scaling volumes by factor {scale_factor}")
-                dim_tags = gmsh.model.getEntities(dim=3)
-                gmsh.model.occ.dilate(
-                    dim_tags, 0.0, 0.0, 0.0, scale_factor, scale_factor, scale_factor
-                )
-                gmsh.model.occ.synchronize()
-
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
 
             gmsh.option.set_number("Mesh.MeshSizeMin", min_mesh_size)
             gmsh.option.set_number("Mesh.MeshSizeMax", max_mesh_size)
-            gmsh.option.set_number("Mesh.MeshSizeFromCurvature", curvature_mesh_size)
             gmsh.model.mesh.generate(dim)
 
             mesh._save_changes(save_all=True)
@@ -153,7 +130,6 @@ class Mesh:
         geometry: Geometry,
         min_mesh_size: float = 50,
         max_mesh_size: float = 50,
-        curvature_mesh_size: int = 0,
         dim: int = 2,
     ) -> Mesh:
         """Mesh solids with Gmsh.
@@ -165,9 +141,6 @@ class Mesh:
             geometry: Geometry to be meshed.
             min_mesh_size: Min mesh element size. Defaults to 50.
             max_mesh_size: Max mesh element size. Defaults to 50.
-            curvature_mesh_size: If set to a positive value, the mesh will be
-            adapted with respect to the curvature of the model entities. The value
-            giving the target number of elements per 2 Pi radians. Defaults to 0.
             dim: Generate a mesh up to this dimension. Defaults to 2.
         """
         warnings.warn(
@@ -175,9 +148,7 @@ class Mesh:
             FutureWarning,
             stacklevel=2,
         )
-        return cls.from_geometry(
-            geometry, min_mesh_size, max_mesh_size, curvature_mesh_size, dim
-        )
+        return cls.from_geometry(geometry, min_mesh_size, max_mesh_size, dim)
 
     def render(
         self,
