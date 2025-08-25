@@ -193,7 +193,7 @@ class OCCSurfaceOptions:
             params.MinSize = 1e-7
 
         params.Relative = self.relative
-        params.InParallel = True
+        params.InParallel = self.parallel
 
         return params
 
@@ -348,7 +348,7 @@ class SurfaceMesh(Mesh):
 
     @staticmethod
     def _mesh_occ(geometry: Geometry, options: OCCSurfaceOptions):
-        assert gmsh.is_initialized
+        assert gmsh.is_initialized()
         cmp = TopoDS_Compound()
         cmp_builder = TopoDS_Builder()
         cmp_builder.MakeCompound(cmp)
@@ -364,8 +364,6 @@ class SurfaceMesh(Mesh):
             cmp_builder.Add(cmp, shape)
 
         params = options._build_params()
-
-        print(params.MinSize)
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
         loc = TopLoc_Location()
