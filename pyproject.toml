@@ -2,14 +2,10 @@
 name = "stellarmesh"
 version = "1.0.0.dev1"
 authors = [{ name = "Alex Koen" }]
-description = "Gmsh wrapper and DAGMC geometry creator."
+description = "Meshing library for nuclear workflows."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "numpy",
-    "pymmg",
-    "meshio[all]",
-]
+dependencies = ["numpy", "pymmg", "meshio[all]"]
 
 [project.optional-dependencies]
 dev = [
@@ -59,5 +55,3 @@ pydocstyle.convention = "google"
 
 [tool.pyright]
 pythonVersion = "3.11"
-
-
