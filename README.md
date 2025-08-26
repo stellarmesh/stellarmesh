@@ -62,7 +62,7 @@ The OpenCASCADE (OCC) meshing backend is the preferred backend when linear or an
 
 ### Gmsh
 
-The Gmsh meshing backend offers a number of meshing algorithms for both surface and volume meshes. More detailed documentation, see [gmsh.info](https://gmsh.info/doc/texinfo/gmsh.html).
+The Gmsh meshing backend offers a number of meshing algorithms for both surface and volume meshes. For more detailed documentation, see [gmsh.info](https://gmsh.info/doc/texinfo/gmsh.html).
 
 ## Example
 
