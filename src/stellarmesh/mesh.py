@@ -348,8 +348,8 @@ class SurfaceMesh(Mesh):
 
         gmsh.model.mesh.generate(2)
 
-    @staticmethod
-    def _mesh_occ(geometry: Geometry, options: OCCSurfaceOptions):
+    @classmethod
+    def _mesh_occ(cls, geometry: Geometry, options: OCCSurfaceOptions):
         assert gmsh.is_initialized()
         cmp = TopoDS_Compound()
         cmp_builder = TopoDS_Builder()
@@ -357,7 +357,8 @@ class SurfaceMesh(Mesh):
 
         tolerance_tool = ShapeFix_ShapeTolerance()
         params = options._build_params()
-        for shape in geometry.solids:
+        # These operations must be completed before IncrementalMesh is initialized
+        for shape in geometry.solids + geometry.faces:
             explorer = TopExp_Explorer(shape, TopAbs_FACE)
             while explorer.More():
                 face = TopoDS.Face_s(explorer.Current())
@@ -370,24 +371,31 @@ class SurfaceMesh(Mesh):
 
             cmp_builder.Add(cmp, shape)
 
+        params = options._build_params()
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
         explorer = TopExp_Explorer(cmp, TopAbs_FACE)
-        faces = []
         while explorer.More():
             face = TopoDS.Face_s(explorer.Current())
-            faces.append(face)
+            BRepTools.Clean_s(face)
             explorer.Next()
-
-        loc = TopLoc_Location()
 
         # NOTE: Gmsh import logic is at
         # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
+        params = options._build_params()
+        BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
+        loc = TopLoc_Location()
         known_surface_tags = []
-        for face in faces:
-            dim_tags = gmsh.model.occ.import_shapes_native_pointer(face._address())
+        explorer = TopExp_Explorer(cmp, TopAbs_FACE)
+        while explorer.More():
+            face = TopoDS.Face_s(explorer.Current())
+
+            # This returns the existing dim_tag if face is already bound
+            dim_tags = cls._import_occ(face, native=True)
             surface_tag = dim_tags[0][1]
             if surface_tag in known_surface_tags:
+                logger.debug(f"Surface {surface_tag} already meshed. Skipping.")
+                explorer.Next()
                 continue
             known_surface_tags.append(surface_tag)
             ocp_mesh_vertices = []
@@ -410,6 +418,7 @@ class SurfaceMesh(Mesh):
                 else [3, 2, 1]
             )
             for tri in poly_triangulation.Triangles():
+                # TODO(akoen): This has potentially big performance impacts
                 triangles.extend([tri.Value(i) + offset - 1 for i in order])
             offset += node_count
             gmsh.model.mesh.add_nodes(
@@ -425,6 +434,8 @@ class SurfaceMesh(Mesh):
             gmsh.model.mesh.add_elements_by_type(
                 surface_tag, 2, [], [node_start + i for i in triangles]
             )
+
+            explorer.Next()
 
     @staticmethod
     def _import_occ(shape: TopoDS_Shape, *, native: bool = True) -> list[tuple]:
