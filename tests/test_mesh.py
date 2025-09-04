@@ -7,6 +7,7 @@ from pathlib import Path
 import build123d as bd
 import gmsh
 import pytest
+import numpy as np
 
 import stellarmesh as sm
 
@@ -16,6 +17,8 @@ from .test_geometry import (
     model_bd_nestedspheres,
     model_bd_offsetboxes,  # noqa: F401
     model_bd_sphere,
+    geom_bd_capped_torus,
+    geom_bd_single_torus_surface,
 )
 
 
@@ -163,6 +166,39 @@ def test_mesh_overlap(model_bd_stellarator_plasma):
 
     assert "No overlaps were found" in check_overlap(2.5)
     assert "Overlap Location:" in check_overlap(5)
+
+
+def test_mesh_surface_capped_torus_bcs(geom_bd_capped_torus):
+    # NOTE: In this test all surfaces are also members of volume surfaces
+    for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
+        mesh = sm.SurfaceMesh.from_geometry(geom_bd_capped_torus, options)
+        with mesh:
+            dim_tags = gmsh.model.get_physical_groups()
+            surface_bc_dim_tag = dim_tags[0]
+            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
+                *surface_bc_dim_tag
+            )
+            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
+            assert surface_bc_group_name == "boundary:Reflecting"
+            assert np.all(
+                surface_bc_tags == np.array([2, 3, 5, 6, 8, 9, 11, 12], dtype=np.int32)
+            )
+
+            volume_mat_dim_tag = dim_tags[1]
+            volume_mat_tags = gmsh.model.get_entities_for_physical_group(
+                *volume_mat_dim_tag
+            )
+            volume_mat_group_name = gmsh.model.get_physical_name(*volume_mat_dim_tag)
+            assert volume_mat_group_name == "mat:"
+            assert np.all(volume_mat_tags == np.array([1, 2, 3, 4], dtype=np.int32))
+
+
+def test_mesh_surface_single_torus_bc(geom_bd_single_torus_surface):
+    # NOTE: In this test all surfaces are also members of volume surfaces
+    for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
+        mesh = sm.SurfaceMesh.from_geometry(geom_bd_single_torus_surface, options)
+        with mesh:
+            dim_tags = gmsh.model.get_physical_groups()
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
