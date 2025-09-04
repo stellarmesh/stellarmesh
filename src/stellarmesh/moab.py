@@ -502,6 +502,23 @@ class DAGMCModel(MOABModel):
             check=True,
         )
 
+    @staticmethod
+    def overlap_check(
+        input_filename: PathLike,
+        binary_path: str = "overlap_check",
+    ):
+        """Check mesh for overlaps.
+
+        Args:
+            input_filename: Input .h5m filename.
+            binary_path: Path to overlap_check or default to find in path. Defaults to
+            "overlap_check".
+        """
+        subprocess.run(
+            [binary_path, str(input_filename)],
+            check=True,
+        )
+
     @classmethod
     def from_mesh(
         cls,
