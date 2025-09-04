@@ -62,13 +62,13 @@ class Geometry:
 
     solids: list[TopoDS_Solid]
     material_names: list[str]
-    surfaces: list[TopoDS_Face]
-    surface_boundary_conditions: list[str]
+    faces: list[TopoDS_Face]
+    face_boundary_conditions: list[str]
 
     def __init__(
         self,
-        solids: Optional[Sequence[Solid | TopoDS_Solid]],
-        material_names: Optional[Sequence[str]],
+        solids: Optional[Sequence[Solid | TopoDS_Solid]] = None,
+        material_names: Optional[Sequence[str]] = None,
         surfaces: Optional[Sequence[Face | Shell | TopoDS_Face | TopoDS_Shell]] = None,
         surface_boundary_conditions: Optional[Sequence[str]] = None,
     ):
@@ -111,8 +111,8 @@ class Geometry:
                 self.solids.append(s_wrapped)
                 self.material_names.append(mat_name)
 
-        self.surfaces = []
-        self.surface_boundary_conditions = []
+        self.faces = []
+        self.face_boundary_conditions = []
         if surfaces and surface_boundary_conditions:
             for i, (s, bc) in enumerate(
                 zip(surfaces, surface_boundary_conditions, strict=True)
@@ -127,12 +127,12 @@ class Geometry:
                     s_wrapped = s
 
                 if isinstance(s_wrapped, TopoDS_Face):
-                    self.surfaces.append(s_wrapped)
-                    self.surface_boundary_conditions.append(bc)
+                    self.faces.append(s_wrapped)
+                    self.face_boundary_conditions.append(bc)
                 elif isinstance(s_wrapped, TopoDS_Shell):
                     child_faces = self._get_child_shapes(s_wrapped, TopoDS_Face)
-                    self.surfaces.extend(child_faces)
-                    self.surface_boundary_conditions.extend([bc] * len(child_faces))
+                    self.faces.extend(child_faces)
+                    self.face_boundary_conditions.extend([bc] * len(child_faces))
 
                 else:
                     raise TypeError(
