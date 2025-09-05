@@ -40,6 +40,7 @@ try:
     )
     from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
     from OCP.TopExp import TopExp_Explorer
+    from OCP.ShapeFix import ShapeFix_ShapeTolerance
     from OCP.TopLoc import TopLoc_Location
     from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound, TopoDS_Shape
 except ImportError as e:
@@ -181,6 +182,7 @@ class OCCSurfaceOptions:
             params.Angle = float("inf")
 
         if self.tol_linear:
+            # DeflectionInterior is set to Deflection in OCCT
             params.Deflection = self.tol_linear
         else:
             params.Deflection = float("inf")
@@ -353,17 +355,20 @@ class SurfaceMesh(Mesh):
         cmp_builder = TopoDS_Builder()
         cmp_builder.MakeCompound(cmp)
 
+        tolerance_tool = ShapeFix_ShapeTolerance()
+        params = options._build_params()
         for shape in geometry.solids:
-            # Remove any existing triangulation on the shape
             explorer = TopExp_Explorer(shape, TopAbs_FACE)
             while explorer.More():
                 face = TopoDS.Face_s(explorer.Current())
+                # OCC ignores the deflection if the shape tolerance is less than the deflection
+                tolerance_tool.SetTolerance(face, params.Deflection)
+                # Remove any existing triangulation on the shape
                 BRepTools.Clean_s(face)
                 explorer.Next()
 
             cmp_builder.Add(cmp, shape)
 
-        params = options._build_params()
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
         loc = TopLoc_Location()
