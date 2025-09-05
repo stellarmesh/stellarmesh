@@ -4,6 +4,7 @@
 *.egg-info/
 .vscode/
 .devcontainer/
+scratch/
 
 .coverage
 *.h5m
