@@ -13,9 +13,7 @@ import warnings
 from typing import (
     Protocol,
     Sequence,
-    TypeVar,
     overload,
-    runtime_checkable,
 )
 
 from build123d import Optional, Type
