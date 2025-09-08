@@ -1,12 +1,16 @@
 """Meshing tests."""
 
+import importlib.resources
+import subprocess
 from pathlib import Path
 
+import build123d as bd
 import gmsh
 import pytest
 
 import stellarmesh as sm
 
+from . import resources
 from .test_geometry import (
     model_bd_layered_torus,
     model_bd_nestedspheres,
@@ -123,6 +127,42 @@ def test_mesh_volume_imprintedboxes(geom_imprintedboxes):
         assert len(surface_tags) == 13, (
             f"Number of surfaces ({len(surface_tags)}) does not match expected (13). Mesh: {mesh._mesh_filename}"
         )
+
+
+@pytest.fixture
+def model_bd_stellarator_plasma():
+    with importlib.resources.path(resources, "NCSX-LCFS.brep") as path:
+        plasma = bd.import_brep(path)
+        return plasma
+
+
+def test_mesh_overlap(model_bd_stellarator_plasma):
+    plasma = model_bd_stellarator_plasma
+    b1 = bd.thicken(plasma, 5)
+    b2 = bd.thicken(b1.faces()[0], 5)
+
+    def check_overlap(tol_linear):
+        geom = sm.Geometry(solids=[b1, b2], material_names=[""] * 2)
+        mesh = sm.SurfaceMesh.from_geometry(
+            geom, sm.OCCSurfaceOptions(tol_linear=tol_linear, tol_angular_deg=None)
+        )
+
+        mesh.write("tmp.msh")
+        dagmc_model = sm.DAGMCModel.from_mesh(mesh)
+        dagmc_model.write("dagmc.h5m")
+
+        result = subprocess.run(
+            ["overlap_check", "-p", "5", "dagmc.h5m"],
+            check=False,
+            cwd=".",
+            capture_output=True,
+            text=True,
+        )
+
+        return result.stdout
+
+    assert "No overlaps were found" in check_overlap(2.5)
+    assert "Overlap Location:" in check_overlap(5)
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
