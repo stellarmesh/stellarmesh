@@ -66,15 +66,15 @@ def geom_bd_capped_torus():
         solids=solids,
         material_names=[""] * len(solids),
         surfaces=surfaces,
-        surface_boundary_conditions=["Reflecting"] * len(surfaces),
+        surface_boundary_conditions=["reflecting"] * len(surfaces),
     )
     return geom
 
 
 @pytest.fixture
-def geom_bd_single_torus_surface():
+def geom_bd_torus_single_surface():
     face: bd.Face = bd.Solid.make_torus(10, 1).face()  # type: ignore
-    geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["Vacuum"])
+    geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["vacuum"])
     return geom
 
 
