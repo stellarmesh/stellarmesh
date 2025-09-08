@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import tempfile
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -371,18 +372,8 @@ class SurfaceMesh(Mesh):
 
             cmp_builder.Add(cmp, shape)
 
-        params = options._build_params()
-        BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
-
-        explorer = TopExp_Explorer(cmp, TopAbs_FACE)
-        while explorer.More():
-            face = TopoDS.Face_s(explorer.Current())
-            BRepTools.Clean_s(face)
-            explorer.Next()
-
         # NOTE: Gmsh import logic is at
         # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
-        params = options._build_params()
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
         loc = TopLoc_Location()
         known_surface_tags = []
@@ -419,6 +410,7 @@ class SurfaceMesh(Mesh):
             )
             for tri in poly_triangulation.Triangles():
                 # TODO(akoen): This has potentially big performance impacts
+                # https://github.com/stellarmesh/stellarmesh/issues/55
                 triangles.extend([tri.Value(i) + offset - 1 for i in order])
             offset += node_count
             gmsh.model.mesh.add_nodes(
@@ -464,20 +456,17 @@ class SurfaceMesh(Mesh):
             gmsh.model.add("stellarmesh_model")
 
             # Solids
-            material_solid_map = {}
+            material_solid_map = defaultdict(list)
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = cls._import_occ(s)
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
                 solid_tag = dim_tags[0][1]
-                if m not in material_solid_map:
-                    material_solid_map[m] = [solid_tag]
-                else:
-                    material_solid_map[m].append(solid_tag)
+                material_solid_map[m].append(solid_tag)
 
             # Faces
-            surface_bc_map = {}
+            surface_bc_map = defaultdict(list)
             for f, bc in zip(
                 geometry.faces, geometry.face_boundary_conditions, strict=True
             ):
@@ -486,10 +475,7 @@ class SurfaceMesh(Mesh):
                     raise TypeError("Importing non-surface geometry.")
 
                 surface_tag = dim_tags[0][1]
-                if bc not in surface_bc_map:
-                    surface_bc_map[bc] = [surface_tag]
-                else:
-                    surface_bc_map[bc].append(surface_tag)
+                surface_bc_map[bc].append(surface_tag)
 
             gmsh.model.occ.synchronize()
             for material, solid_tags in material_solid_map.items():
