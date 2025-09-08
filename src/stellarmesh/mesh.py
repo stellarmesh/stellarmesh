@@ -38,9 +38,9 @@ try:
         IMeshTools_MeshAlgoType_Watson,
         IMeshTools_Parameters,
     )
+    from OCP.ShapeFix import ShapeFix_ShapeTolerance
     from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
     from OCP.TopExp import TopExp_Explorer
-    from OCP.ShapeFix import ShapeFix_ShapeTolerance
     from OCP.TopLoc import TopLoc_Location
     from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound, TopoDS_Shape
 except ImportError as e:
@@ -362,7 +362,7 @@ class SurfaceMesh(Mesh):
             while explorer.More():
                 face = TopoDS.Face_s(explorer.Current())
                 # OCC ignores the deflection if the shape tolerance is less than the deflection
-                tolerance_tool.SetTolerance(face, params.Deflection)
+                tolerance_tool.LimitTolerance(face, 0, params.Deflection)
                 # Remove any existing triangulation on the shape
                 BRepTools.Clean_s(face)
                 explorer.Next()
