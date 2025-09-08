@@ -361,7 +361,8 @@ class SurfaceMesh(Mesh):
             explorer = TopExp_Explorer(shape, TopAbs_FACE)
             while explorer.More():
                 face = TopoDS.Face_s(explorer.Current())
-                # OCC ignores the deflection if the shape tolerance is less than the deflection
+                # OCC ignores the deflection if the shape tolerance is less than the
+                # deflection
                 tolerance_tool.LimitTolerance(face, 0, params.Deflection)
                 # Remove any existing triangulation on the shape
                 BRepTools.Clean_s(face)

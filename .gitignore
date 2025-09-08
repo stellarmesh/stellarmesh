@@ -4,6 +4,7 @@
 *.egg-info/
 .vscode/
 .devcontainer/
+scratch/
 
 .coverage
 *.h5m
@@ -27,5 +28,5 @@ README_files/
 README.html
 __pycache__/
 
-!tests/data/*.msh
+!tests/resources/*.brep
 
