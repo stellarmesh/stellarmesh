@@ -1,5 +1,6 @@
 import build123d as bd
 import pytest
+
 import stellarmesh as sm
 
 
@@ -76,17 +77,6 @@ def geom_bd_torus_single_surface():
     face: bd.Face = bd.Solid.make_torus(10, 1).face()  # type: ignore
     geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["vacuum"])
     return geom
-
-
-@pytest.fixture
-def test_tmp(model_bd_capped_torus):
-    geom = sm.Geometry(
-        model_bd_capped_torus, material_names=[""] * len(model_bd_capped_torus)
-    )
-    geom_imprinted = geom.imprint()
-    from ocp_vscode import show
-
-    show(geom_imprinted.solids)
 
 
 @pytest.mark.parametrize(
