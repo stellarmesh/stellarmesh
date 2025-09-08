@@ -52,6 +52,9 @@ ignore = [
 ]
 pydocstyle.convention = "google"
 
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/**/test_*.py" = ["F811"] # Variable redefinition (required for fixtures)
+
 
 [tool.pyright]
 pythonVersion = "3.11"
