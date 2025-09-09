@@ -8,12 +8,9 @@ desc: Geometry class represents a CAD geometry to be meshed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import warnings
-from typing import Protocol, Sequence, Union, overload, runtime_checkable
-
-from build123d import Optional
+from typing import Protocol, Sequence, Union
 
 try:
     from OCP.BOPAlgo import BOPAlgo_MakeConnected
@@ -23,7 +20,7 @@ try:
     from OCP.STEPControl import STEPControl_Reader
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid, TopoDS_Face, TopoDS_Shell
+    from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."
@@ -32,35 +29,22 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
-@runtime_checkable
-class Face(Protocol):
-    wrapped: TopoDS_Face | None
-
-
-@runtime_checkable
-class Shell(Protocol):
-    wrapped: TopoDS_Shell | None
-
-
-@runtime_checkable
 class Solid(Protocol):
-    wrapped: TopoDS_Solid | None
+    """A Cadquery, build123d or other wrapper for an OCC TopoDS_Solid."""
+
+    wrapped: TopoDS_Shape | None
 
 
 class Geometry:
     """Geometry, representing an ordered list of solids, to be meshed."""
 
-    solids: list[TopoDS_Solid]
-    material_names: list[str]
-    surfaces: list[TopoDS_Face | TopoDS_Shell]
-    surface_boundary_conditions: list[str]
+    solids: Sequence[TopoDS_Solid]
+    material_names: Sequence[str]
 
     def __init__(
         self,
-        solids: Optional[Sequence[Solid | TopoDS_Solid]],
-        material_names: Optional[Sequence[str]],
-        surfaces: Optional[Sequence[Face | Shell | TopoDS_Face | TopoDS_Shell]] = None,
-        surface_boundary_conditions: Optional[Sequence[str]] = None,
+        solids: Sequence[Union[Solid, TopoDS_Solid]],
+        material_names: Sequence[str],
     ):
         """Construct geometry from solids.
 
@@ -69,60 +53,26 @@ class Geometry:
             Solid, or OCP TopoDS_Solid.
             material_names: List of materials. Must match length of solids.
         """
-        if (
-            (solids and not material_names)
-            or (material_names and not solids)
-            or (solids and material_names and len(solids) != len(material_names))
-        ):
+        logger.info(f"Importing {len(solids)} solids to geometry")
+        if len(material_names) != len(solids):
             raise ValueError(
-                "If solids or material_names are provided, both must be provided and match in length."
-            )
-
-        if (
-            (surfaces and not surface_boundary_conditions)
-            or (surface_boundary_conditions and not surfaces)
-            or (
-                surfaces
-                and surface_boundary_conditions
-                and len(surfaces) != len(surface_boundary_conditions)
-            )
-        ):
-            raise ValueError(
-                "If surfaces or surface_boundary_conditions are provided, both must be provided and match in length."
+                f"Number of material names ({len(material_names)}) must match length of"
+                + f" solids ({len(solids)})."
             )
 
         self.solids = []
-        if solids:
-            for i, s in enumerate(solids):
-                if isinstance(s, TopoDS_Solid):
-                    self.solids.append(s)
-                elif isinstance(s, Solid):
-                    if s.wrapped is None:
-                        raise ValueError(
-                            f"{s} {i} has no wrapped TopoDS_Solid. Is it valid?"
-                        )
-                    self.solids.append(s.wrapped)
-                else:
-                    raise TypeError(f"Solid {i} is of invalid type {type(s).__name__}")
+        for i, s in enumerate(solids):
+            if isinstance(s, TopoDS_Solid):
+                self.solids.append(s)
+            elif hasattr(s, "wrapped"):
+                self.solids.append(s.wrapped)
+            else:
+                raise ValueError(
+                    f"Solid {i} is of type {type(s).__name__}, not a cadquery Solid, "
+                    + "build123d Solid, or TopoDS_Solid"
+                )
 
-            self.material_names = list(material_names)
-
-        self.surfaces = []
-        if surfaces:
-            for i, s in enumerate(surfaces):
-                if isinstance(s, (TopoDS_Face, TopoDS_Shell)):
-                    self.surfaces.append(s)
-                elif isinstance(s, (Face, Shell)):  # type: ignore
-                    if s.wrapped is None:
-                        raise ValueError(
-                            f"{s} {i} has no wrapped TopoDS_Face or TopoDS_Shell. Is it valid?"
-                        )
-                    self.surfaces.append(s.wrapped)
-                else:
-                    raise TypeError(
-                        f"Surface {i} is of invalid type {type(s).__name__}"
-                    )
-            self.surface_boundary_conditions = list(surface_boundary_conditions)
+        self.material_names = material_names
 
     @staticmethod
     def _solids_from_shape(shape: TopoDS_Shape) -> list[TopoDS_Solid]:
