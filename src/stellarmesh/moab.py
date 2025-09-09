@@ -593,6 +593,19 @@ class DAGMCModel(MOABModel):
                     boundary_name = gmsh.model.get_physical_name(2, surface_groups[0])
                     surface_set.boundary = boundary_name[9:]
 
+                volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[
+                    0
+                ]
+                if len(volume_adjacencies_dimtags) == 0:
+                    logger.warning(
+                        "DAGMC does not support surfaces without attached "
+                        "volumes. Creating a void volume for surface "
+                        f"{surface_tag}."
+                    )
+                    volume_set = model.create_volume(i)
+                    volume_set.material = "void"
+                    surface_set.forward_volume = volume_set
+
                 # Write elements to MOAB. STL export/import is very efficient.
                 with tempfile.NamedTemporaryFile(
                     suffix=".stl", delete=True
@@ -671,7 +684,7 @@ class DAGMCModel(MOABModel):
 
     def _get_entities_of_geom_dimension(self, dim: int) -> list[np.uint64]:
         return self._core.get_entities_by_type_and_tag(
-            0, pymoab.types.MBENTITYSET, self.geom_dimension_tag, [dim]
+            0, pymoab.types.MBENTITYSET, [self.geom_dimension_tag], [dim]
         )
 
     @property
