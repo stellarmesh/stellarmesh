@@ -372,14 +372,13 @@ class SurfaceMesh(Mesh):
 
         BRepMesh_IncrementalMesh(theShape=cmp, theParameters=params)
 
+        loc = TopLoc_Location()
         explorer = TopExp_Explorer(cmp, TopAbs_FACE)
         faces = []
         while explorer.More():
             face = TopoDS.Face_s(explorer.Current())
             faces.append(face)
             explorer.Next()
-
-        loc = TopLoc_Location()
 
         # NOTE: Gmsh import logic is at
         # https://github.com/live-clones/gmsh/blob/a20dc70a8bb9115185dd6a3b519f6bb3a1aec261/src/geo/GModelIO_OCC.cpp#L715
@@ -452,7 +451,6 @@ class SurfaceMesh(Mesh):
         with cls() as mesh:
             gmsh.model.add("stellarmesh_model")
 
-            # Solids
             material_solid_map = {}
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = cls._import_occ(s)
@@ -465,26 +463,10 @@ class SurfaceMesh(Mesh):
                 else:
                     material_solid_map[m].append(solid_tag)
 
-            # Faces
-            surface_bc_map = {}
-            for f, bc in zip(
-                geometry.faces, geometry.face_boundary_conditions, strict=True
-            ):
-                dim_tags = cls._import_occ(f)
-                if dim_tags[0][0] != 2:
-                    raise TypeError("Importing non-surface geometry.")
-
-                surface_tag = dim_tags[0][1]
-                if bc not in surface_bc_map:
-                    surface_bc_map[bc] = [surface_tag]
-                else:
-                    surface_bc_map[bc].append(surface_tag)
-
             gmsh.model.occ.synchronize()
+
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
-            for bc, surface_tags in surface_bc_map.items():
-                gmsh.model.add_physical_group(2, surface_tags, name=f"boundary:{bc}")
 
             if type(options).__name__ == GmshSurfaceOptions.__name__:
                 cls._mesh_gmsh(options)  # type: ignore
