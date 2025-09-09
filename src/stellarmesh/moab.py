@@ -574,6 +574,7 @@ class DAGMCModel(MOABModel):
             if element_tags:
                 logger.warning("Discarding volume elements from mesh.")
 
+            # 1. Add volume sets, surface sets, and surface sense
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
             for i, volume_tag in enumerate(volume_tags):
@@ -601,43 +602,42 @@ class DAGMCModel(MOABModel):
                 # sense.
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
                 surface_tags = adjacencies[1]
-                for j, surface_tag in enumerate(surface_tags):
+                for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:
                         surface_set = model.create_surface(surface_tag)
                         known_surfaces[surface_tag] = surface_set
-
                         surface_set.forward_volume = volume_set
-                        surface_groups = gmsh.model.get_physical_groups_for_entity(
-                            2, surface_tag
-                        )
-                        if (num_groups := len(surface_groups)) > 1:
-                            raise ValueError(
-                                f"Surface with tag {surface_tag} and global_id {j} "
-                                f"belongs to {num_groups} physical groups, should be 0 "
-                                f"or 1."
-                            )
-                        if num_groups == 1:
-                            boundary_name = gmsh.model.get_physical_name(
-                                2, surface_groups[0]
-                            )
-                            surface_set.boundary = boundary_name[9:]
-
-                        # Write surface to MOAB. STL export/import is very efficient.
-                        with tempfile.NamedTemporaryFile(
-                            suffix=".stl", delete=True
-                        ) as stl_file:
-                            # We add a temp dummy surface physical group to constrain
-                            # STL export.
-                            group_tag = gmsh.model.add_physical_group(2, [surface_tag])
-                            gmsh.write(stl_file.name)
-                            gmsh.model.remove_physical_groups([(2, group_tag)])
-                            core.load_file(stl_file.name, surface_set.handle)
-
                     else:
                         # Surface already has a forward volume, so this must be the
                         # reverse volume.
                         surface_set = known_surfaces[surface_tag]
                         surface_set.reverse_volume = volume_set
+
+            # 2. Add surface elements and boundary conditions
+            for surface_tag, surface_set in known_surfaces.items():
+                surface_groups = gmsh.model.get_physical_groups_for_entity(
+                    2, surface_tag
+                )
+                if (num_groups := len(surface_groups)) > 1:
+                    raise ValueError(
+                        f"Surface with tag {surface_tag}"
+                        f"belongs to {num_groups} physical groups, should be 0 "
+                        f"or 1."
+                    )
+                if num_groups == 1:
+                    boundary_name = gmsh.model.get_physical_name(2, surface_groups[0])
+                    surface_set.boundary = boundary_name[9:]
+
+                # Write elements to MOAB. STL export/import is very efficient.
+                with tempfile.NamedTemporaryFile(
+                    suffix=".stl", delete=True
+                ) as stl_file:
+                    # We add a temp dummy surface physical group to constrain
+                    # STL export.
+                    group_tag = gmsh.model.add_physical_group(2, [surface_tag])
+                    gmsh.write(stl_file.name)
+                    gmsh.model.remove_physical_groups([(2, group_tag)])
+                    core.load_file(stl_file.name, surface_set.handle)
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
