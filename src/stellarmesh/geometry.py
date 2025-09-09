@@ -8,14 +8,17 @@ desc: Geometry class represents a CAD geometry to be meshed.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import warnings
 from typing import (
     Protocol,
     Sequence,
     TypeVar,
+    Union,
     overload,
     runtime_checkable,
+    Literal,
 )
 
 from build123d import Optional, Type
@@ -28,7 +31,7 @@ try:
     from OCP.STEPControl import STEPControl_Reader
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape, TopoDS_Shell, TopoDS_Solid
+    from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Solid, TopoDS_Face, TopoDS_Shell
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."
