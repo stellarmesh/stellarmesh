@@ -36,22 +36,21 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+_OCP_Shape = TypeVar("_OCP_Shape", bound=TopoDS_Shape)
 
+
+@runtime_checkable
 class Face(Protocol):
-    """Interface for a CadQuery or Build123d Face."""
-
     wrapped: TopoDS_Face | None
 
 
+@runtime_checkable
 class Shell(Protocol):
-    """Interface for a CadQuery or Build123d Shell."""
-
     wrapped: TopoDS_Shell | None
 
 
+@runtime_checkable
 class Solid(Protocol):
-    """Interface for a CadQuery or Build123d Solid."""
-
     wrapped: TopoDS_Solid | None
 
 
@@ -83,16 +82,14 @@ class Geometry:
         """
         if (solids and not material_names) or (material_names and not solids):
             raise ValueError(
-                "If solids or material_names are provided"
-                ", both must be provided and match in length."
+                "If solids or material_names are provided, both must be provided and match in length."
             )
 
         if (surfaces and not surface_boundary_conditions) or (
             surface_boundary_conditions and not surfaces
         ):
             raise ValueError(
-                "If surfaces or surface_boundary_conditions are provided"
-                ", both must be provided and match in length."
+                "If surfaces or surface_boundary_conditions are provided, both must be provided and match in length."
             )
 
         self.solids = []
@@ -117,16 +114,14 @@ class Geometry:
             for i, (s, bc) in enumerate(
                 zip(surfaces, surface_boundary_conditions, strict=True)
             ):
-                s_wrapped = (
-                    s
-                    if isinstance(s, (TopoDS_Face, TopoDS_Shell))
-                    else getattr(s, "wrapped", None)
-                )
-
-                if s.wrapped is None:  # type: ignore
-                    raise ValueError(
-                        f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
-                    )
+                if isinstance(s, (Face, Shell)):
+                    if s.wrapped is None:
+                        raise ValueError(
+                            f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
+                        )
+                    s_wrapped = s.wrapped
+                else:
+                    s_wrapped = s
 
                 if isinstance(s_wrapped, TopoDS_Face):
                     self.faces.append(s_wrapped)
