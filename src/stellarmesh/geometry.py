@@ -11,17 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import warnings
-from typing import (
-    Protocol,
-    Sequence,
-    TypeVar,
-    Union,
-    overload,
-    runtime_checkable,
-    Literal,
-)
+from typing import Protocol, Sequence, Union, overload, runtime_checkable
 
-from build123d import Optional, Type
+from build123d import Optional
 
 try:
     from OCP.BOPAlgo import BOPAlgo_MakeConnected
@@ -38,8 +30,6 @@ except ImportError as e:
     ) from e
 
 logger = logging.getLogger(__name__)
-
-_OCP_Shape = TypeVar("_OCP_Shape", bound=TopoDS_Shape)
 
 
 @runtime_checkable
@@ -62,7 +52,7 @@ class Geometry:
 
     solids: list[TopoDS_Solid]
     material_names: list[str]
-    surfaces: list[TopoDS_Face]
+    surfaces: list[TopoDS_Face | TopoDS_Shell]
     surface_boundary_conditions: list[str]
 
     def __init__(
@@ -75,119 +65,77 @@ class Geometry:
         """Construct geometry from solids.
 
         Args:
-            solids: List of solids, where each solid is a build123d Solid, CadQuery
+            solids: List of solids, where each solid is a build123d Solid, cadquery
             Solid, or OCP TopoDS_Solid.
             material_names: List of materials. Must match length of solids.
-            surfaces: List of surfaces, where each surface is a build123d or Cadquery
-            Face or Shell, or an OCP TopoDS_Face or TopoDS_Shell.
-            surface_boundary_conditions: List of boundary condition names. Must match
-            length of surfaces.
         """
-        if (solids and not material_names) or (material_names and not solids):
+        if (
+            (solids and not material_names)
+            or (material_names and not solids)
+            or (solids and material_names and len(solids) != len(material_names))
+        ):
             raise ValueError(
                 "If solids or material_names are provided, both must be provided and match in length."
             )
 
-        if (surfaces and not surface_boundary_conditions) or (
-            surface_boundary_conditions and not surfaces
+        if (
+            (surfaces and not surface_boundary_conditions)
+            or (surface_boundary_conditions and not surfaces)
+            or (
+                surfaces
+                and surface_boundary_conditions
+                and len(surfaces) != len(surface_boundary_conditions)
+            )
         ):
             raise ValueError(
                 "If surfaces or surface_boundary_conditions are provided, both must be provided and match in length."
             )
 
         self.solids = []
-        self.material_names = []
-        if solids and material_names:
-            for i, (s, mat_name) in enumerate(zip(solids, material_names, strict=True)):
-                s_wrapped = (
-                    s if isinstance(s, TopoDS_Shape) else getattr(s, "wrapped", None)
-                )
-
-                if s_wrapped is None:
-                    raise ValueError(
-                        f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
-                    )
-
-                self.solids.append(s_wrapped)
-                self.material_names.append(mat_name)
-
-        self.surfaces = []
-        self.surface_boundary_conditions = []
-        if surfaces and surface_boundary_conditions:
-            for i, (s, bc) in enumerate(
-                zip(surfaces, surface_boundary_conditions, strict=True)
-            ):
-                if isinstance(s, (Face, Shell)):
+        if solids:
+            for i, s in enumerate(solids):
+                if isinstance(s, TopoDS_Solid):
+                    self.solids.append(s)
+                elif isinstance(s, Solid):
                     if s.wrapped is None:
                         raise ValueError(
-                            f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
+                            f"{s} {i} has no wrapped TopoDS_Solid. Is it valid?"
                         )
-                    s_wrapped = s.wrapped
+                    self.solids.append(s.wrapped)
                 else:
-                    s_wrapped = s
+                    raise TypeError(f"Solid {i} is of invalid type {type(s).__name__}")
 
-                if isinstance(s_wrapped, TopoDS_Face):
-                    self.surfaces.append(s_wrapped)
-                    self.surface_boundary_conditions.append(bc)
-                elif isinstance(s_wrapped, TopoDS_Shell):
-                    child_faces = self._get_child_shapes(s_wrapped, TopoDS_Face)
-                    self.surfaces.extend(child_faces)
-                    self.surface_boundary_conditions.extend([bc] * len(child_faces))
+            self.material_names = list(material_names)
 
+        self.surfaces = []
+        if surfaces:
+            for i, s in enumerate(surfaces):
+                if isinstance(s, (TopoDS_Face, TopoDS_Shell)):
+                    self.surfaces.append(s)
+                elif isinstance(s, (Face, Shell)):  # type: ignore
+                    if s.wrapped is None:
+                        raise ValueError(
+                            f"{s} {i} has no wrapped TopoDS_Face or TopoDS_Shell. Is it valid?"
+                        )
+                    self.surfaces.append(s.wrapped)
                 else:
                     raise TypeError(
                         f"Surface {i} is of invalid type {type(s).__name__}"
                     )
+            self.surface_boundary_conditions = list(surface_boundary_conditions)
 
     @staticmethod
-    @overload
-    def _get_child_shapes(
-        parent: TopoDS_Shape, shape_type: Type[TopoDS_Face]
-    ) -> list[TopoDS_Face]: ...
-
-    @staticmethod
-    @overload
-    def _get_child_shapes(
-        parent: TopoDS_Shape, shape_type: Type[TopoDS_Shell]
-    ) -> list[TopoDS_Shell]: ...
-
-    @staticmethod
-    @overload
-    def _get_child_shapes(
-        parent: TopoDS_Shape, shape_type: Type[TopoDS_Solid]
-    ) -> list[TopoDS_Solid]: ...
-
-    @staticmethod
-    def _get_child_shapes(
-        parent: TopoDS_Shape, shape_type: Type[TopoDS_Shape]
-    ) -> Sequence[TopoDS_Shape]:
-        """Return all the child shapes of this shape."""
-        type_map = {
-            "TopoDS_Face": TopAbs_ShapeEnum.TopAbs_FACE,
-            "TopoDS_Shell": TopAbs_ShapeEnum.TopAbs_SHELL,
-            "TopoDS_Solid": TopAbs_ShapeEnum.TopAbs_SOLID,
-        }
-
-        top_abs_type = type_map.get(shape_type.__name__)
-        if top_abs_type is None:
-            raise ValueError(f"Unsupported shape_type: {shape_type}")
-
-        shapes = []
-        explorer = TopExp_Explorer(parent, top_abs_type)
-        while explorer.More():
-            assert explorer.Current().ShapeType() == top_abs_type
-            shapes.append(explorer.Current())
-            explorer.Next()
-        return shapes
-
-    @classmethod
-    def _get_solids_from_shape(cls, shape: TopoDS_Shape) -> list[TopoDS_Solid]:
+    def _solids_from_shape(shape: TopoDS_Shape) -> list[TopoDS_Solid]:
         """Return all the solids in this shape."""
-        solids: list[TopoDS_Solid] = []
+        solids = []
         if shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_SOLID:
             solids.append(TopoDS.Solid_s(shape))
-        elif shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:
-            solids = cls._get_child_shapes(shape, TopoDS_Solid)
+        if shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:
+            explorer = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_SOLID)
+            while explorer.More():
+                assert explorer.Current().ShapeType() == TopAbs_ShapeEnum.TopAbs_SOLID
+                solids.append(TopoDS.Solid_s(explorer.Current()))
+                explorer.Next()
         return solids
 
     # TODO(akoen): from_step and from_brep are not DRY
@@ -219,7 +167,7 @@ class Geometry:
         solids = []
         for i in range(reader.NbShapes()):
             shape = reader.Shape(i + 1)
-            solids.extend(cls._get_solids_from_shape(shape))
+            solids.extend(cls._solids_from_shape(shape))
 
         return cls(solids, material_names)
 
@@ -268,7 +216,7 @@ class Geometry:
 
         if shape.IsNull():
             raise ValueError(f"Could not import {filename}")
-        solids = cls._get_solids_from_shape(shape)
+        solids = cls._solids_from_shape(shape)
 
         logger.info(f"Importing {len(solids)} from {filename}")
         return cls(solids, material_names)
@@ -310,7 +258,7 @@ class Geometry:
 
         bldr.Perform()
         res = bldr.Shape()
-        res_solids = self._get_solids_from_shape(res)
+        res_solids = self._solids_from_shape(res)
 
         if (l0 := len(res_solids)) != (l1 := len(self.solids)):
             raise RuntimeError(
