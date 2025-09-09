@@ -7510,7 +7510,7 @@ packages:
 - pypi: ./
   name: stellarmesh
   version: 0.0.0
-  sha256: 79b9dbef3544edad1164a1fe0d951206bb2e92b0920b8d6677e469380e745733
+  sha256: 25663025a188740ed6698c43586316d7af68dd0ba2ad6c5bfc7982989f62f8dc
   requires_dist:
   - numpy
   - pymmg
