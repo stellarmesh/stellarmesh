@@ -47,48 +47,6 @@ def geom_imprintedboxes(model_bd_offsetboxes):
     return geom_imprinted
 
 
-@pytest.fixture
-def geom_bd_capped_torus():
-    faces = bd.ShapeList()
-    solids = [bd.Solid.make_torus(10, 1, major_angle=90)]
-    for _ in range(3):
-        s = bd.Solid.thicken(solids[-1].faces()[0], 1)
-        solids.append(s)
-
-    for s in solids:
-        faces.extend(s.faces())
-
-    xz_faces = faces.filter_by(bd.Plane.XZ)
-    yz_faces = faces.filter_by(bd.Plane.YZ)
-    surfaces = list(xz_faces + yz_faces)
-
-    geom = sm.Geometry(
-        solids=solids,
-        material_names=[""] * len(solids),
-        surfaces=surfaces,
-        surface_boundary_conditions=["Reflecting"] * len(surfaces),
-    )
-    return geom
-
-
-@pytest.fixture
-def geom_bd_single_torus_surface():
-    face: bd.Face = bd.Solid.make_torus(10, 1).face()  # type: ignore
-    geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["Vacuum"])
-    return geom
-
-
-@pytest.fixture
-def test_tmp(model_bd_capped_torus):
-    geom = sm.Geometry(
-        model_bd_capped_torus, material_names=[""] * len(model_bd_capped_torus)
-    )
-    geom_imprinted = geom.imprint()
-    from ocp_vscode import show
-
-    show(geom_imprinted.solids)
-
-
 @pytest.mark.parametrize(
     "fixture",
     [("model_bd_layered_torus"), ("model_ocp_layered_torus")],
