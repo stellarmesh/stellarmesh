@@ -161,8 +161,6 @@ class DAGMCGroup(EntitySet):
 
 
 class DAGMCEntitySet(EntitySet):
-    """An entity set for a DAGMC topological surface or volume."""
-
     model: DAGMCModel
 
     @property
@@ -601,7 +599,7 @@ class DAGMCModel(MOABModel):
                 # sense.
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
                 surface_tags = adjacencies[1]
-                for j, surface_tag in enumerate(surface_tags):
+                for i, surface_tag in enumerate(surface_tags):
                     if surface_tag not in known_surfaces:
                         surface_set = model.create_surface(surface_tag)
                         known_surfaces[surface_tag] = surface_set
@@ -612,7 +610,7 @@ class DAGMCModel(MOABModel):
                         )
                         if (num_groups := len(surface_groups)) > 1:
                             raise ValueError(
-                                f"Surface with tag {surface_tag} and global_id {j} "
+                                f"Surface with tag {surface_tag} and global_id {i} "
                                 f"belongs to {num_groups} physical groups, should be 0 "
                                 f"or 1."
                             )
