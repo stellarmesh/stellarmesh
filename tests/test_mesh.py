@@ -6,12 +6,15 @@ from pathlib import Path
 
 import build123d as bd
 import gmsh
+import numpy as np
 import pytest
 
 import stellarmesh as sm
 
 from . import resources
 from .test_geometry import (
+    geom_bd_capped_torus,  # noqa: F401
+    geom_bd_torus_single_surface,  # noqa: F401
     model_bd_layered_torus,
     model_bd_nestedspheres,
     model_bd_offsetboxes,  # noqa: F401
@@ -163,6 +166,50 @@ def test_mesh_overlap(model_bd_stellarator_plasma):
 
     assert "No overlaps were found" in check_overlap(2.5)
     assert "Overlap Location:" in check_overlap(5)
+
+
+def test_mesh_surface_capped_torus_bcs(geom_bd_capped_torus):
+    """Test material and BC assignments for a capped torus."""
+    # NOTE: In this test all surfaces are also members of solids
+    for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
+        mesh = sm.SurfaceMesh.from_geometry(geom_bd_capped_torus, options)
+        with mesh:
+            dim_tags = gmsh.model.get_physical_groups()
+            surface_bc_dim_tag = dim_tags[0]
+            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
+                *surface_bc_dim_tag
+            )
+            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
+            assert surface_bc_group_name == "boundary:reflecting"
+            assert np.all(
+                surface_bc_tags == np.array([2, 3, 5, 6, 8, 9, 11, 12], dtype=np.int32)
+            )
+
+            volume_mat_dim_tag = dim_tags[1]
+            volume_mat_tags = gmsh.model.get_entities_for_physical_group(
+                *volume_mat_dim_tag
+            )
+            volume_mat_group_name = gmsh.model.get_physical_name(*volume_mat_dim_tag)
+            assert volume_mat_group_name == "mat:"
+            assert np.all(volume_mat_tags == np.array([1, 2, 3, 4], dtype=np.int32))
+
+
+def test_mesh_torus_single_surface_bc(geom_bd_torus_single_surface):
+    for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
+        mesh = sm.SurfaceMesh.from_geometry(geom_bd_torus_single_surface, options)
+        with mesh:
+            dim_tags = gmsh.model.get_physical_groups()
+
+            assert len(dim_tags) == 1, "Too many physical groups"
+
+            surface_bc_dim_tag = dim_tags[0]
+            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
+                *surface_bc_dim_tag
+            )
+            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
+
+            assert surface_bc_group_name == "boundary:vacuum"
+            assert np.all(surface_bc_tags == np.array([1], dtype=np.int32))
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):

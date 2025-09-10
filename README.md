@@ -12,6 +12,7 @@ Stellarmesh is a meshing library for nuclear workflows. Principally, it supports
 - [x] Import of [CadQuery](https://github.com/CadQuery/cadquery), [build123d](https://github.com/gumyr/build123d), STEP and BREP geometry
 - [x] Surface and volume meshing
 - [x] Gmsh and OpenCASCADE meshing backends
+- [x] Surface boundary conditions
 - [x] Linear and angular mesh tolerances
 - [x] Imprinting and merging of conformal geometry
 - [x] Mesh refinement

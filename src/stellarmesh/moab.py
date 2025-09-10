@@ -160,10 +160,19 @@ class DAGMCGroup(EntitySet):
         self.model._core.remove_entity(self.handle, entity_set.handle)
 
 
-class DAGMCSurface(EntitySet):
-    """DAGMC surface entity."""
+class DAGMCEntitySet(EntitySet):
+    """An entity set for a DAGMC topological surface or volume."""
 
     model: DAGMCModel
+
+    @property
+    def groups(self) -> list[DAGMCGroup]:
+        """Get list of groups containing this volume."""
+        return [group for group in self.model.groups if self in group]
+
+
+class DAGMCSurface(DAGMCEntitySet):
+    """DAGMC surface entity."""
 
     @property
     def forward_volume(self) -> Optional[DAGMCVolume]:
@@ -211,6 +220,38 @@ class DAGMCSurface(EntitySet):
                 self.model._core.add_parent_child(vol.handle, self.handle)
 
     @property
+    def boundary(self) -> Optional[str]:
+        """Name of the boundary condition assigned to this surface."""
+        for group in self.groups:
+            if self in group and group.name.startswith("boundary:"):
+                return group.name[9:]
+        return None
+
+    @boundary.setter
+    def boundary(self, name: str):
+        existing_group = False
+        for group in self.model.groups:
+            if f"boundary:{name}" == group.name:
+                # Add volume to group matching specified name, unless the volume
+                # is already in it
+                if self in group:
+                    return
+                group.add(self)
+                existing_group = True
+
+            elif self in group and group.name.startswith("boundary:"):
+                # Remove volume from existing group
+                group.remove(self)
+
+        if not existing_group:
+            # Create new group and add entity
+            new_group = self.model.create_group(f"boundary:{name}")
+            new_group.global_id = (
+                max((g.global_id for g in self.model.groups), default=0) + 1
+            )
+            new_group.add(self)
+
+    @property
     def adjacent_volumes(self) -> list[DAGMCVolume]:
         """Get adjacent volumes.
 
@@ -226,10 +267,8 @@ class DAGMCSurface(EntitySet):
         return self.model._core.get_entities_by_type(self.handle, pymoab.types.MBTRI)
 
 
-class DAGMCVolume(EntitySet):
+class DAGMCVolume(DAGMCEntitySet):
     """DAGMC volume entity."""
-
-    model: DAGMCModel
 
     @property
     def adjacent_surfaces(self) -> list[DAGMCSurface]:
@@ -240,11 +279,6 @@ class DAGMCVolume(EntitySet):
         """
         child_entities = self.model._core.get_child_meshsets(self.handle)
         return [DAGMCSurface(self.model, e) for e in child_entities]
-
-    @property
-    def groups(self) -> list[DAGMCGroup]:
-        """Get list of groups containing this volume."""
-        return [group for group in self.model.groups if self in group]
 
     @property
     def material(self) -> Optional[str]:
@@ -419,6 +453,7 @@ class MOABModel:
         Args:
             filename: Filename with format-appropriate extension.
         """
+        logger.info(f"Writing DAGMC mesh to {filename!s}")
         self._core.write_file(str(filename))
 
 
@@ -532,18 +567,61 @@ class DAGMCModel(MOABModel):
         core = pymoab.core.Core()
         model = cls(core)
 
-        known_surfaces: dict[int, DAGMCSurface] = {}
-
         with mesh:
             # Warn about volume elements being discarded
-            _, element_tags, _ = gmsh.model.mesh.get_elements(3)
-            if element_tags:
+            if gmsh.model.mesh.get_elements(3)[1]:
                 logger.warning("Discarding volume elements from mesh.")
 
+            # 1. Add surface elements and boundary conditions
+            surfaces: dict[int, DAGMCSurface] = {}
+            surface_dimtags = gmsh.model.get_entities(2)
+            surface_tags = [s[1] for s in surface_dimtags]
+            for i, surface_tag in enumerate(surface_tags):
+                surface_set = model.create_surface(surface_tag)
+                surfaces[surface_tag] = surface_set
+
+                surface_groups = gmsh.model.get_physical_groups_for_entity(
+                    2, surface_tag
+                )
+                if (num_groups := len(surface_groups)) not in [0, 1]:
+                    raise ValueError(
+                        f"Surface with tag {surface_tag} and global_id {i}"
+                        f"belongs to {num_groups} physical groups, should be 0 "
+                        f"or 1."
+                    )
+                elif num_groups == 1:
+                    boundary_name = gmsh.model.get_physical_name(2, surface_groups[0])
+                    surface_set.boundary = boundary_name[9:]
+
+                volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[
+                    0
+                ]
+                if len(volume_adjacencies_dimtags) == 0:
+                    logger.warning(
+                        "DAGMC does not support surfaces without attached "
+                        "volumes. Creating a void volume for surface "
+                        f"{surface_tag}."
+                    )
+                    volume_set = model.create_volume(i)
+                    volume_set.material = "void"
+                    surface_set.forward_volume = volume_set
+
+                # Write elements to MOAB. STL export/import is very efficient.
+                with tempfile.NamedTemporaryFile(
+                    suffix=".stl", delete=True
+                ) as stl_file:
+                    # We add a temp dummy surface physical group to constrain
+                    # STL export.
+                    group_tag = gmsh.model.add_physical_group(2, [surface_tag])
+                    gmsh.write(stl_file.name)
+                    gmsh.model.remove_physical_groups([(2, group_tag)])
+                    core.load_file(stl_file.name, surface_set.handle)
+
+            # 2. Add volume sets and surface sense
+            known_surfaces: set[int] = set()
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
             for i, volume_tag in enumerate(volume_tags):
-                # Add volume set
                 volume_set = model.create_volume(i)
 
                 # Add volume to its physical group, which stores metadata incl. material
@@ -553,7 +631,7 @@ class DAGMCModel(MOABModel):
                 if (num_groups := len(vol_groups)) != 1:
                     raise ValueError(
                         f"Volume with tag {volume_tag} and global_id {i} "
-                        f"belongs to {num_groups} physical groups, should be 1"
+                        f"belongs to {num_groups} physical groups, should be 1."
                     )
                 mat_name = gmsh.model.get_physical_name(3, vol_groups[0])
                 volume_set.material = mat_name[4:]
@@ -568,25 +646,16 @@ class DAGMCModel(MOABModel):
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
+                    surface_set = surfaces[surface_tag]
                     if surface_tag not in known_surfaces:
-                        surface = model.create_surface(surface_tag)
-                        surface.forward_volume = volume_set
-                        known_surfaces[surface_tag] = surface
-
-                        # Write surface to MOAB. STL export/import is very efficient.
-                        with tempfile.NamedTemporaryFile(
-                            suffix=".stl", delete=True
-                        ) as stl_file:
-                            group_tag = gmsh.model.add_physical_group(2, [surface_tag])
-                            gmsh.write(stl_file.name)
-                            gmsh.model.remove_physical_groups([(2, group_tag)])
-                            core.load_file(stl_file.name, surface.handle)
-
+                        known_surfaces.add(surface_tag)
+                        surface_set.forward_volume = volume_set
                     else:
-                        # Surface already has a forward volume, so this must be the
-                        # reverse volume.
-                        surface = known_surfaces[surface_tag]
-                        surface.reverse_volume = volume_set
+                        logger.debug(
+                            f"Surface {surface_tag} has been seen before"
+                            ", setting reverse volume"
+                        )
+                        surface_set.reverse_volume = volume_set
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
@@ -615,7 +684,7 @@ class DAGMCModel(MOABModel):
 
     def _get_entities_of_geom_dimension(self, dim: int) -> list[np.uint64]:
         return self._core.get_entities_by_type_and_tag(
-            0, pymoab.types.MBENTITYSET, self.geom_dimension_tag, [dim]
+            0, pymoab.types.MBENTITYSET, [self.geom_dimension_tag], [dim]
         )
 
     @property
