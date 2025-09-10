@@ -26,7 +26,7 @@ def test_benchmark_mesh(model_bd_layered_torus, benchmark, mesh_options):
     mesh = benchmark.pedantic(
         sm.SurfaceMesh.from_geometry,
         args=(geom, mesh_options),
-        iterations=1,
+        rounds=3,
     )
     with mesh:
         num_nodes = len(gmsh.model.mesh.get_nodes()[0])
