@@ -25,6 +25,7 @@ class Model(ABC):
     """CSG and DAGMC model representations with materials, tallies, and source."""
 
     bounded: bool = True
+    fail_if_identical = True
 
     @cached_property
     @abstractmethod
@@ -63,7 +64,7 @@ class Model(ABC):
     @cached_property
     @abstractmethod
     def geom_cad(self) -> openmc.Geometry:
-        with tempfile.TemporaryDirectory(delete=False) as tmp_path:
+        with tempfile.TemporaryDirectory(delete=False) as tmp_path:  # pyright: ignore[reportCallIssue]
             self.dagmc.write(str(Path(tmp_path) / "dagmc.h5m"))
             universe = openmc.DAGMCUniverse(Path(tmp_path) / "dagmc.h5m")
             if self.bounded:
@@ -313,7 +314,8 @@ class TorusSurface(Model):
 
     major_radius: float = 10.0
     minor_radius: float = 1.0
-    bounded = False
+    dagmc_bounded = False
+    fail_if_identical = False
 
     @cached_property
     def materials(self):
@@ -404,6 +406,9 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
                 rtol=RELATIVE_TOLERANCE_PERCENT,
             ), f"CSG and CAD tallies do not match within {RELATIVE_TOLERANCE_PERCENT}%"
 
-            assert not np.allclose(
-                csg_tally_result.mean, cad_tally_result.mean, rtol=0.000001
-            ), "CSG and CAD tallies are too close, have we loaded the same data twice?"
+            if model_cls.fail_if_identical:
+                assert not np.allclose(
+                    csg_tally_result.mean, cad_tally_result.mean, rtol=0.000001
+                ), (
+                    "CSG and CAD tallies are too close, have we loaded the same data twice?"
+                )

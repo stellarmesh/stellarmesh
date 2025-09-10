@@ -453,6 +453,7 @@ class MOABModel:
         Args:
             filename: Filename with format-appropriate extension.
         """
+        logger.info(f"Writing DAGMC mesh to {filename!s}")
         self._core.write_file(str(filename))
 
 
@@ -568,8 +569,7 @@ class DAGMCModel(MOABModel):
 
         with mesh:
             # Warn about volume elements being discarded
-            _, element_tags, _ = gmsh.model.mesh.get_elements(3)
-            if element_tags:
+            if gmsh.model.mesh.get_elements(3)[1]:
                 logger.warning("Discarding volume elements from mesh.")
 
             # 1. Add surface elements and boundary conditions
@@ -583,13 +583,13 @@ class DAGMCModel(MOABModel):
                 surface_groups = gmsh.model.get_physical_groups_for_entity(
                     2, surface_tag
                 )
-                if (num_groups := len(surface_groups)) > 1:
+                if (num_groups := len(surface_groups)) not in [0, 1]:
                     raise ValueError(
                         f"Surface with tag {surface_tag} and global_id {i}"
                         f"belongs to {num_groups} physical groups, should be 0 "
                         f"or 1."
                     )
-                if num_groups == 1:
+                elif num_groups == 1:
                     boundary_name = gmsh.model.get_physical_name(2, surface_groups[0])
                     surface_set.boundary = boundary_name[9:]
 
