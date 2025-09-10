@@ -35,6 +35,7 @@ class Model(ABC):
 
     @cached_property
     def settings(self) -> openmc.Settings:
+        """Generate the OpenMC settings."""
         settings = openmc.Settings()
         settings.batches = 20
         settings.inactive = 0
@@ -45,7 +46,7 @@ class Model(ABC):
         return settings
 
     @abstractmethod
-    def get_tallies(self, type: Literal["CSG", "CAD"]) -> openmc.Tallies:
+    def get_tallies(self, geom_type: Literal["CSG", "CAD"]) -> openmc.Tallies:
         """Generate the tallies."""
         ...
 
@@ -64,6 +65,7 @@ class Model(ABC):
     @cached_property
     @abstractmethod
     def geom_cad(self) -> openmc.Geometry:
+        """Generate the CAD OpenMC geometry."""
         with tempfile.TemporaryDirectory(delete=False) as tmp_path:  # pyright: ignore[reportCallIssue]
             self.dagmc.write(str(Path(tmp_path) / "dagmc.h5m"))
             universe = openmc.DAGMCUniverse(Path(tmp_path) / "dagmc.h5m")
@@ -104,16 +106,18 @@ class Model(ABC):
 
     @cached_property
     def dagmc(self) -> sm.DAGMCModel:
-        sm_dagmc_model = sm_dagmc_model = sm.DAGMCModel.from_mesh(self.mesh)
+        """Generate the Stellarmesh DAGMCModel."""
+        sm_dagmc_model = sm.DAGMCModel.from_mesh(self.mesh)
         return sm_dagmc_model
 
-    def build_model(self, type: Literal["CSG", "CAD"]) -> openmc.Model:
-        geometry = self.geom_cad if type == "CAD" else self.geom_csg
+    def build_model(self, geom_type: Literal["CSG", "CAD"]) -> openmc.Model:
+        """Build the OpenMC Model for either CSG or CAD geometries."""
+        geometry = self.geom_cad if geom_type == "CAD" else self.geom_csg
         model = openmc.Model(geometry=geometry)
         if self.materials:
             model.materials = self.materials
         model.settings = self.settings
-        model.tallies = self.get_tallies(type)
+        model.tallies = self.get_tallies(geom_type)
         return model
 
 
@@ -134,7 +138,7 @@ class NestedSpheres(Model):
         mat2.set_density("g/cm3", 1)
         return openmc.Materials([mat1, mat2])
 
-    def get_tallies(self, type):
+    def get_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials)
         tally = openmc.Tally(name="flux_tally")
         tally.filters = [mat_filter]
@@ -187,7 +191,7 @@ class NestedCylinders(Model):
         mat2.set_density("g/cm3", 1)
         return openmc.Materials([mat1, mat2])
 
-    def get_tallies(self, type):
+    def get_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials)
         tally = openmc.Tally(name="flux_tally")
         tally.filters = [mat_filter]
@@ -246,7 +250,7 @@ class NestedCylinders(Model):
 
 
 class Torus(Model):
-    """Torus."""
+    """Single-volume torus with flux tally."""
 
     major_radius: float = 10.0
     minor_radius: float = 1.0
@@ -258,7 +262,7 @@ class Torus(Model):
         mat1.set_density("g/cm3", 1)
         return openmc.Materials([mat1])
 
-    def get_tallies(self, type):
+    def get_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials[0])
         tally = openmc.Tally(name="mat1_flux_tally")
         tally.filters = [mat_filter]
@@ -310,7 +314,7 @@ class Torus(Model):
 
 
 class TorusSurface(Model):
-    """Torus."""
+    """Single torus surface with a current tally and vacuum BCs."""
 
     major_radius: float = 10.0
     minor_radius: float = 1.0
@@ -321,7 +325,7 @@ class TorusSurface(Model):
     def materials(self):
         return None
 
-    def get_tallies(self, type):
+    def get_tallies(self, geom_type):
         surface_ids = (
             list(self.geom_csg.get_all_surfaces())
             if type == "CSG"
