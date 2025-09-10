@@ -66,12 +66,12 @@ class Model(ABC):
     @abstractmethod
     def geom_cad(self) -> openmc.Geometry:
         """Generate the CAD OpenMC geometry."""
-        with tempfile.TemporaryDirectory() as tmp_path:
-            self.dagmc.write(str(Path(tmp_path) / "dagmc.h5m"))
-            universe = openmc.DAGMCUniverse(Path(tmp_path) / "dagmc.h5m")
-            if self.bounded:
-                universe = universe.bounded_universe()
-            geometry = openmc.Geometry(universe)
+        tmp_path = tempfile.mkdtemp()
+        self.dagmc.write(str(Path(tmp_path) / "dagmc.h5m"))
+        universe = openmc.DAGMCUniverse(Path(tmp_path) / "dagmc.h5m")
+        if self.bounded:
+            universe = universe.bounded_universe()
+        geometry = openmc.Geometry(universe)
         return geometry
 
     @cached_property
