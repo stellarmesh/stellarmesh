@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import meshio
+import numpy as np
 
 from ._core import PathLike
 from .geometry import Geometry
@@ -389,18 +390,18 @@ class SurfaceMesh(Mesh):
             if surface_tag in known_surface_tags:
                 continue
             known_surface_tags.append(surface_tag)
-            ocp_mesh_vertices = []
-            triangles = []
-            offset = 0
 
             poly_triangulation = BRep_Tool.Triangulation_s(face, loc)
             trsf = loc.Transformation()
+
             # Store vertices
             node_count = poly_triangulation.NbNodes()
-            for j in range(1, node_count + 1):
-                gp_pnt = poly_triangulation.Node(j).Transformed(trsf)
+            ocp_mesh_vertices = np.empty((node_count) * 3)
+            offset = 0
+            for j in range(node_count):
+                gp_pnt = poly_triangulation.Node(j + 1).Transformed(trsf)
                 pnt = (gp_pnt.X(), gp_pnt.Y(), gp_pnt.Z())
-                ocp_mesh_vertices.extend(pnt)
+                ocp_mesh_vertices[3 * j : 3 * (j + 1)] = pnt
 
             # Store triangles
             order = (
@@ -408,8 +409,10 @@ class SurfaceMesh(Mesh):
                 if face.Orientation().value == TopAbs_FORWARD.value
                 else [3, 2, 1]
             )
-            for tri in poly_triangulation.Triangles():
-                triangles.extend([tri.Value(i) + offset - 1 for i in order])
+            triangles = np.empty(len(poly_triangulation.Triangles()) * 3)
+            for j, tri in enumerate(poly_triangulation.Triangles()):
+                tri_pnts = tuple(tri.Value(o) + offset - 1 for o in order)
+                triangles[3 * j : 3 * (j + 1)] = tri_pnts
             offset += node_count
             gmsh.model.mesh.add_nodes(
                 2,
@@ -422,7 +425,7 @@ class SurfaceMesh(Mesh):
             )
             node_start = nodes[0]
             gmsh.model.mesh.add_elements_by_type(
-                surface_tag, 2, [], [node_start + i for i in triangles]
+                surface_tag, 2, [], triangles + node_start
             )
 
     @staticmethod
