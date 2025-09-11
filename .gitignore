@@ -30,3 +30,7 @@ __pycache__/
 
 !tests/resources/*.brep
 
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+pixi.lock
