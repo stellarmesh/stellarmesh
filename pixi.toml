@@ -1,0 +1,41 @@
+[workspace]
+authors = ["akoen <git@koen.ca>"]
+channels = ["conda-forge"]
+name = "stellarmesh"
+platforms = ["linux-64"]
+
+[tasks]
+
+[dependencies]
+python = ">=3.11"
+
+[pypi-dependencies]
+stellarmesh = { path = ".", editable = true }
+
+[feature.required.dependencies]
+python-gmsh = ">=4"
+ocp = ">=7.7.2.1"
+moab = "*"
+
+[feature.dev.pypi-dependencies]
+cadquery-ocp-stubs = ">=7.7.2.1"
+ocp-vscode = ">=2.9.0"
+pytest = ">=8.4.1"
+pytest-cov = ">=6.2.1"
+pytest-benchmark = ">=5.1.0"
+
+[feature.dev.dependencies]
+openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
+python = "==3.11"
+
+[feature.build123d.dependencies]
+build123d = "*"
+
+[feature.cadquery.dependencies]
+cadquery = "*"
+
+[environments]
+required = { features = ["required"], solve-group = "default" }
+dev = { features = ["required", "dev"] }
+build123d = { features = ["required", "dev", "build123d"] }
+cadquery = { features = ["required", "dev", "cadquery"] }
