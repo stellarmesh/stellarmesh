@@ -8,14 +8,12 @@ platforms = ["linux-64"]
 
 [dependencies]
 python = ">=3.11"
-
-[pypi-dependencies]
-stellarmesh = { path = ".", editable = true }
-
-[feature.required.dependencies]
 python-gmsh = ">=4"
 ocp = ">=7.7.2.1"
 moab = "*"
+
+[pypi-dependencies]
+stellarmesh = { path = ".", editable = true }
 
 [feature.dev.pypi-dependencies]
 cadquery-ocp-stubs = ">=7.7.2.1"
@@ -35,7 +33,6 @@ build123d = "*"
 cadquery = "*"
 
 [environments]
-required = { features = ["required"], solve-group = "default" }
-dev = { features = ["required", "dev"] }
-build123d = { features = ["required", "dev", "build123d"] }
-cadquery = { features = ["required", "dev", "cadquery"] }
+dev = { features = ["dev"] }
+build123d = { features = ["dev", "build123d"] }
+cadquery = { features = ["dev", "cadquery"] }
