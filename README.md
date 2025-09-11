@@ -2,7 +2,7 @@
 <img src="https://github.com/Thea-Energy/stellarmesh/raw/main/doc/logo.png" width="80%">
 </p>
 
-[![Tests](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg)](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml)
+[![Tests](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg)](https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml) [![PyPI Version](https://img.shields.io/pypi/v/stellarmesh.svg)](https://pypi.org/project/stellarmesh/) [![Conda Version](https://img.shields.io/conda/vn/conda-forge/stellarmesh.svg)](https://anaconda.org/conda-forge/stellarmesh) 
 
 Stellarmesh is a meshing library for nuclear workflows. Principally, it supports the creation of DAGMC geometry from CAD models.
 
