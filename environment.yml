@@ -1,8 +1,0 @@
-channels:
-  - conda-forge
-
-dependencies:
-  - openmc=0.15.2=dagmc_nompi*
-  - python-gmsh=4.13.1
-  - OCP=7.8.1.2
-  - build123d=0.9.1

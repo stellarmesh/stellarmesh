@@ -21,10 +21,17 @@ ocp-vscode = ">=2.9.0"
 pytest = ">=8.4.1"
 pytest-cov = ">=6.2.1"
 pytest-benchmark = ">=5.1.0"
+sphinx-github-style = ">=1.2.2, <2"
+sphinx-rtd-theme = ">=3.0.2, <4"
+sphinx-autobuild = ">=2025.8.25, <2026"
+shibuya = ">=2025.8.16, <2026"
+sphinx-tabs = ">=3.4.7, <4"
 
 [feature.dev.dependencies]
 openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
 python = "==3.11"
+sphinx = ">=8.3.0,<9"
+nbsphinx = ">=0.9.7,<0.10"
 
 [feature.build123d.dependencies]
 build123d = "*"
