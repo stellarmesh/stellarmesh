@@ -30,3 +30,5 @@ __all__ = [
     "SurfaceMesh",
     "VolumeMesh",
 ]
+
+__version__ = "0.1.0b1"

@@ -1,6 +1,6 @@
 [project]
 name = "stellarmesh"
-version = "1.0.0b1"
+dynamic = ["version"]
 authors = [{ name = "Alex Koen" }]
 description = "Meshing library for nuclear workflows."
 readme = "README.md"
