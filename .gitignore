@@ -5,6 +5,8 @@
 .vscode/
 .devcontainer/
 scratch/
+docs/_build
+docs/**/generated
 
 .coverage
 *.h5m
