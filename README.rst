@@ -1,4 +1,4 @@
-.. figure:: https://github.com/Thea-Energy/stellarmesh/raw/main/doc/logo.png
+.. figure:: https://github.com/Thea-Energy/stellarmesh/raw/main/docs/logo.png
    :width: 100%
    :align: center
 
@@ -48,14 +48,14 @@ Example
        geometry, sm.GmshSurfaceOptions(min_mesh_size=50, max_mesh_size=200)
    )
    mesh.write("test.msh")
-   mesh.render("doc/torus-mesh-reversed.png", rotation_xyz=(90, 0, -90), normals=15)
+   mesh.render("docs/torus-mesh-reversed.png", rotation_xyz=(90, 0, -90), normals=15)
 
    h5m = sm.DAGMCModel.from_mesh(mesh)
    h5m.write("dagmc.h5m")
    h5m.write("dagmc.vtk")
 
 
-.. figure:: https://github.com/Thea-Energy/stellarmesh/raw/main/doc/torus-mesh.png
+.. figure:: https://github.com/Thea-Energy/stellarmesh/raw/main/docs/torus-mesh.png
    :width: 80%
    :align: center
    :alt: Rendered mesh with normals.
