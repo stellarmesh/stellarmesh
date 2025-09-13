@@ -10,16 +10,16 @@ supports the creation of DAGMC geometry from CAD models.
 
 **Features**:
 
-- ☒ Import of `CadQuery <https://github.com/CadQuery/cadquery>`__,
+* ✅ Import of `CadQuery <https://github.com/CadQuery/cadquery>`__,
   `build123d <https://github.com/gumyr/build123d>`__, STEP and BREP
   geometry
-- ☒ Surface and volume meshing
-- ☒ Gmsh and OpenCASCADE meshing backends
-- ☒ Linear and angular mesh tolerances
-- ☒ Imprinting and merging of conformal geometry
-- ☒ Mesh refinement
-- ☒ Programatic manipulation of .h5m tags
-- ☒ Automated testing and integration
+* ✅ Surface and volume meshing
+* ✅ Gmsh and OpenCASCADE meshing backends
+* ✅ Linear and angular mesh tolerances
+* ✅ Imprinting and merging of conformal geometry
+* ✅ Mesh refinement
+* ✅ Programmatic manipulation of .h5m tags
+* ✅ Automated testing and integration
 
 ---------------
 Getting Started
