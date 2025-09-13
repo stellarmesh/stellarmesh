@@ -10,10 +10,10 @@ build:
       - asdf install pixi latest
       - asdf global pixi latest
     install:
-      - pixi install -e dev
+      - pixi install -e docs
     build:
       html:
-        - pixi run -e dev sphinx-build -T -b html docs $READTHEDOCS_OUTPUT/html
+        - pixi run -e docs sphinx-build -T -b html docs $READTHEDOCS_OUTPUT/html
 
 sphinx:
   configuration: docs/conf.py

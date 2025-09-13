@@ -23,7 +23,7 @@ surface and volume meshes. For more detailed documentation, see
 Mesh refinement
 ---------------
 
-   [!NOTE] Given CAD geometry, Gmsh often produces high-quality meshes
+.. note:: Given CAD geometry, Gmsh often produces high-quality meshes
    that do not benefit from remeshing.
 
 Stellarmesh supports mesh refinement using the
@@ -39,16 +39,19 @@ and consult the ``Mesh.refine`` and
 `mmgs <https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution>`__
 documentations for parameter values.
 
-.. raw:: html
 
-   <p align="center">
 
-The refined mesh has more triangles in regions with high curvature
-thanks to the hausdorff parameter.
 
-.. raw:: html
+.. figure:: https://github.com/Thea-Energy/stellarmesh/assets/43913902/f3440b6b-3e11-476a-9fae-ab9708f8f2b2
+   :width: 40%
+   :align: center
 
-   </p>
+
+.. figure:: https://github.com/Thea-Energy/stellarmesh/assets/43913902/29acbdb3-24a2-419d-9f3f-237aec475369
+   :width: 40%
+   :align: center
+
+   The refined mesh has more triangles in regions with high curvature thanks to the hausdorff parameter.
 
 Many thanks to `Erik B. Knudsen <https://github.com/ebknudsen>`__ for
 his work on remeshing for

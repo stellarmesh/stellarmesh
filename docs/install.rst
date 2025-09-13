@@ -47,6 +47,7 @@ Stellarmesh supports both `build123d <https://github.com/gumyr/build123d>`__ (re
     .. tab:: CadQuery
 
         .. code:: sh
+
             conda install cadquery
 
 .. |PyPI Version| image:: https://img.shields.io/pypi/v/stellarmesh.svg
