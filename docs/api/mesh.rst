@@ -30,6 +30,7 @@ Specifying Mesh Options
 The :py:meth:`SurfaceMesh.from_geometry` constructor takes either an :py:class:`OCCSurfaceOptions` or :py:class:`GmshSurfaceOptions` options class as a parameter. Use this parameter to select the meshing backend and specify meshing options.
 
 .. autofunction:: stellarmesh.SurfaceMesh.from_geometry
+   :no-index:
 
 
 ---------------
@@ -77,6 +78,7 @@ API
     :toctree: generated
     :template: class.rst
 
+    Mesh
     SurfaceMesh
     VolumeMesh
     OCCSurfaceOptions
