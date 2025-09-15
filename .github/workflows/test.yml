@@ -9,49 +9,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: mambaorg/micromamba:bookworm-slim
-      options: --user=root
     strategy:
       matrix:
         python-version: ["3.11"]
 
     steps:
-      # TODO(akoen): Can we skip these with a different image?
-      - name: Install system packages
-        run: |
-          apt update
-          apt install -y nodejs npm git libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
-
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cache Conda packages
-        uses: actions/cache@v4
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.9.0
         with:
-          path: /opt/conda/pkgs
-          key: ${{ runner.os }}-python-${{ matrix.python-version }}-conda-${{ hashFiles('environment.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-python-${{ matrix.python-version }}-conda-
+          pixi-version: v0.49.0
+          cache: true
+          environments: >-
+            ci
 
-      - name: Install conda-forge dependencies
-        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
-        run: |
-          micromamba install -c conda-forge python=${{ matrix.python-version }} -f environment.yml
-
-      - name: Install PyPI dependencies
-        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
-        run: |
-          python -m pip install . pytest openmc_data_downloader
-
-      - name: Download OpenMC data
-        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
-        run: |
-          openmc_data_downloader -l ENDFB-7.1-NNDC -i Fe56 Be9
-
-      - name: Test with pytest
-        shell: _entrypoint.sh /bin/bash --noprofile --norc -eo pipefail {0}
+      - name: Run tests (build123d env)
         env:
           OPENMC_CROSS_SECTIONS: ${{ github.workspace }}/cross_sections.xml
         run: |
-          python -m pytest --log-cli-level=INFO --ignore tests/test_examples.py --ignore tests/test_mesh_benchmark.py
+          pixi run -e ci test
