@@ -242,7 +242,9 @@ class Mesh:
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.write(self._mesh_filename)
 
-    def write(self, filename: PathLike, *, save_all: bool = True):
+    def write(
+        self, filename: PathLike, *, save_all: bool = True, use_meshio: bool = False
+    ):
         """Write mesh to a file.
 
         If Gmsh cannot handle the file format, writing will be deferred to meshio.
@@ -251,17 +253,18 @@ class Mesh:
             filename: Path to write file.
             save_all: Whether to save all entities (or just physical groups). See
             Gmsh documentation for Mesh.SaveAll. Defaults to True.
+            use_meshio: Write mesh with meshio instead of the builtin exporters.
+            Meshio supports more unstructured mesh formats.
         """
         with self:
             gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
-            try:
-                gmsh.write(str(filename))
-            except Exception:
-                logger.info(f"Using meshio to write {filename}")
+            if use_meshio:
                 with tempfile.NamedTemporaryFile(suffix=".msh") as tmp_mesh:
                     gmsh.write(tmp_mesh.name)
                     mesh = meshio.read(tmp_mesh.name)
                     meshio.write(filename, mesh)
+            else:
+                gmsh.write(str(filename))
 
     def render(
         self,
