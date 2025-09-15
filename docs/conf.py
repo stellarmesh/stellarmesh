@@ -25,6 +25,7 @@ linkcode_link_text = "Source"
 add_module_names = False
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+nbsphinx_execute = "never"  # Can't render without display
 
 html_theme = "shibuya"
 html_static_path = ["_static"]

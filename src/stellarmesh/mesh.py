@@ -445,10 +445,7 @@ class SurfaceMesh(Mesh):
     def from_geometry(
         cls, geometry: Geometry, options: GmshSurfaceOptions | OCCSurfaceOptions
     ) -> SurfaceMesh:
-        """Mesh solids with Gmsh.
-
-        See Gmsh documentation on mesh sizes:
-        https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
+        """Mesh geometry.
 
         Args:
             geometry: Geometry to be meshed.

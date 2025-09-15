@@ -1,26 +1,39 @@
-----
+====
 Mesh
-----
+====
 .. module:: stellarmesh
 
 
 Stellarmesh supports surface meshing with both OCC and Gmsh backends.
 
+--------
+Backends
+--------
+
 OCC
-~~~
+---
 
 The OpenCASCADE (OCC) meshing backend is the preferred backend when
 linear or angular mesh tolerances are required.
 
 Gmsh
-~~~~
+----
 
 The Gmsh meshing backend offers a number of meshing algorithms for both
 surface and volume meshes. For more detailed documentation, see
 `gmsh.info <https://gmsh.info/doc/texinfo/gmsh.html>`__.
 
+-----------------------
+Specifying Mesh Options
+-----------------------
 
-Mesh refinement
+The :py:meth:`SurfaceMesh.from_geometry` constructor takes either an :py:class:`OCCSurfaceOptions` or :py:class:`GmshSurfaceOptions` options class as a parameter. Use this parameter to select the meshing backend and specify meshing options.
+
+.. autofunction:: stellarmesh.SurfaceMesh.from_geometry
+
+
+---------------
+Mesh Refinement
 ---------------
 
 .. note:: Given CAD geometry, Gmsh often produces high-quality meshes
@@ -35,7 +48,7 @@ Stellarmesh supports mesh refinement using the
      ...
    )
 
-and consult the ``Mesh.refine`` and
+and consult the :py:meth:`SurfaceMesh.refine` and
 `mmgs <https://www.mmgtools.org/mmg-remesher-try-mmg/mmg-remesher-tutorials/mmg-remesher-mmg2d/mesh-adaptation-to-a-solution>`__
 documentations for parameter values.
 
