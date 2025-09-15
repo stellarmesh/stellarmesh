@@ -30,4 +30,4 @@ jobs:
         run: ruff format --diff .
 
       - name: Run static analysis with Ruff
-        run: ruff check --output-format=github --extend-exclude=tests,tutorials .
+        run: ruff check --output-format=github --extend-exclude=tests .

@@ -12,8 +12,6 @@ Stellarmesh supports both
 `CadQuery <https://github.com/CadQuery/cadquery>`__ for geometry
 construction but does not depend on either.
 
-The included examples use build123d, which can be installed from
-`conda-forge <https://anaconda.org/conda-forge/build123d>`__.
 
 API
 ---------------------
