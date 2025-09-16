@@ -5,12 +5,12 @@ import sys
 from importlib.metadata import version as get_version
 
 sys.path.append(os.path.abspath("../"))
-import stellarmesh
+import stellarmesh  # noqa: F401
 
 project = "Stellarmesh"
 copyright = "2025, Stellarmesh Developers"  # noqa: A001
 author = "Alex Koen"
-release: str = get_version("package-name")
+release: str = get_version("stellarmesh")
 
 extensions = [
     "sphinx_github_style",
