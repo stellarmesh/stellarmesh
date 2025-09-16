@@ -30,16 +30,14 @@ ocp-vscode = ">=2.9.0"
 pytest = ">=8.4.1"
 pytest-cov = ">=6.2.1"
 pytest-benchmark = ">=5.1.0"
+# Current CadQuery release depends on incompatible OCP. Still works with Stellarmesh
+# but not in same env as build123d.
+cadquery = { git = "https://github.com/CadQuery/cadquery", rev = "d33816099adbc88" }
 
 [feature.dev.dependencies]
 openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
 python = "==3.11"
-
-[feature.build123d.dependencies]
-build123d = "*"
-
-[feature.cadquery.dependencies]
-cadquery = "*"
+build123d = ">=0.9.1,<0.10"
 
 [feature.ci.pypi-dependencies]
 openmc_data_downloader = "*"
@@ -53,6 +51,4 @@ test = { cmd = "pytest --log-cli-level=INFO --ignore tests/test_examples.py --ig
 [environments]
 dev = { features = ["dev", "docs"] }
 docs = { features = ["docs"] }
-build123d = { features = ["dev", "docs", "build123d"] }
-cadquery = { features = ["dev", "docs", "cadquery"] }
-ci = { features = ["dev", "build123d", "ci"] }
+ci = { features = ["dev", "ci"] }
