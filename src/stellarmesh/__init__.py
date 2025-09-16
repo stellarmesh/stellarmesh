@@ -1,5 +1,8 @@
 """Gmsh wrapper and DAGMC geometry creator."""
 
+import contextlib
+from importlib.metadata import PackageNotFoundError, version
+
 from .geometry import Geometry
 from .mesh import (
     GmshSurfaceAlgo,
@@ -31,4 +34,6 @@ __all__ = [
     "VolumeMesh",
 ]
 
-__version__ = "0.1.0"
+
+with contextlib.suppress(PackageNotFoundError):
+    __version__ = version("stellarmesh")

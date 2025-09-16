@@ -2,6 +2,7 @@
 
 import os
 import sys
+from importlib.metadata import version as get_version
 
 sys.path.append(os.path.abspath("../"))
 import stellarmesh
@@ -9,7 +10,7 @@ import stellarmesh
 project = "Stellarmesh"
 copyright = "2025, Stellarmesh Developers"  # noqa: A001
 author = "Alex Koen"
-release = stellarmesh.__version__
+release: str = get_version("package-name")
 
 extensions = [
     "sphinx_github_style",

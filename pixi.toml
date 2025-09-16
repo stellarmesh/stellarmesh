@@ -57,6 +57,7 @@ pytest-benchmark = ">=5.1.0"
 [feature.dev.dependencies]
 openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
 python = "==3.11"
+setuptools_scm = ">=9.2.0,<10"
 
 [feature.build123d.dependencies]
 build123d = ">=0.9.1,<0.10"
