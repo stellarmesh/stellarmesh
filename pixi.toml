@@ -24,19 +24,41 @@ sphinx-tabs = ">=3.4.7, <4"
 sphinx = ">=8.3.0,<9"
 nbsphinx = ">=0.9.7,<0.10"
 
+[feature.cadquery.pypi-dependencies]
+# Current CadQuery release depends on incompatible OCP. Still works with Stellarmesh
+# but not in same env as build123d.
+cadquery = { git = "https://github.com/CadQuery/cadquery", rev = "d33816099adbc88" }
+
+[feature.cadquery.dependencies]
+# CadQuery setup.py does not declare dependencies if $CONDA_PREFIX is listed,
+# so we need to declare them manually.
+ocp = "==7.8.1"
+vtk = { version = "*", build = "qt*" }
+pyparsing = ">=2.1.9"
+ezdxf = ">=1.3.0"
+ipython = "*"
+typing_extensions = "*"
+nlopt = "*"
+multimethod = ">=1.11,<2.0"
+casadi = "*"
+typish = "*"
+trame = "*"
+trame-vtk = "*"
+
+
 [feature.dev.pypi-dependencies]
 cadquery-ocp-stubs = ">=7.7.2.1"
 ocp-vscode = ">=2.9.0"
 pytest = ">=8.4.1"
 pytest-cov = ">=6.2.1"
 pytest-benchmark = ">=5.1.0"
-# Current CadQuery release depends on incompatible OCP. Still works with Stellarmesh
-# but not in same env as build123d.
-cadquery = { git = "https://github.com/CadQuery/cadquery", rev = "d33816099adbc88" }
+
 
 [feature.dev.dependencies]
 openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
 python = "==3.11"
+
+[feature.build123d.dependencies]
 build123d = ">=0.9.1,<0.10"
 
 [feature.ci.pypi-dependencies]
@@ -49,6 +71,6 @@ test = { cmd = "pytest --log-cli-level=INFO --ignore tests/test_examples.py --ig
 ] }
 
 [environments]
-dev = { features = ["dev", "docs"] }
+dev = { features = ["dev", "docs", "cadquery", "build123d"] }
 docs = { features = ["docs"] }
-ci = { features = ["dev", "ci"] }
+ci = { features = ["dev", "ci", "cadquery", "build123d"] }
