@@ -13,9 +13,12 @@ import stellarmesh as sm
 from . import resources
 from .test_geometry import (
     model_bd_layered_torus,
+    model_cq_layered_torus,
     model_bd_nestedspheres,
+    model_cq_nestedspheres,
     model_bd_offsetboxes,  # noqa: F401
     model_bd_sphere,
+    model_cq_sphere,
 )
 
 
@@ -23,8 +26,11 @@ from .test_geometry import (
     "model_name,num_elements_occ,num_elements_gmsh",
     [
         (model_bd_sphere.__name__, 306, 850),
+        (model_cq_sphere.__name__, 306, 850),
         (model_bd_layered_torus.__name__, 5408, 2814),
+        (model_cq_layered_torus.__name__, 5408, 2814),
         (model_bd_nestedspheres.__name__, 612, 1086),
+        (model_cq_nestedspheres.__name__, 612, 1086),
     ],
 )
 def test_surface_mesh_num_elements(
