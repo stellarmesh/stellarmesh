@@ -16,6 +16,7 @@ supports the creation of DAGMC geometry from CAD models.
 * ✅ Surface and volume meshing
 * ✅ Gmsh and OpenCASCADE meshing backends
 * ✅ Linear and angular mesh tolerances
+* ✅ Surface boundary conditions
 * ✅ Imprinting and merging of conformal geometry
 * ✅ Mesh refinement
 * ✅ Programmatic manipulation of .h5m tags
