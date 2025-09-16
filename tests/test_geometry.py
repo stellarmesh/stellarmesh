@@ -1,11 +1,18 @@
 import build123d as bd
+import cadquery as cq
 import pytest
+
 import stellarmesh as sm
 
 
 @pytest.fixture
 def model_bd_sphere():
     return [bd.Solid.make_sphere(10.0)]
+
+
+@pytest.fixture
+def model_cq_sphere():
+    return [cq.Workplane("XY").sphere(10.0).val()]
 
 
 @pytest.fixture
@@ -16,10 +23,28 @@ def model_bd_nestedspheres():
 
 
 @pytest.fixture
+def model_cq_nestedspheres():
+    s0 = cq.Workplane("XY").sphere(5.0).val()
+    s1 = cq.Workplane("XY").sphere(10.0).val()
+    return [s0, s1]
+
+
+@pytest.fixture
 def model_bd_layered_torus():
     solids = [bd.Solid.make_torus(10, 1)]
     for _ in range(3):
         solids.append(bd.Solid.thicken(solids[-1].faces()[0], 1))
+
+    solids = solids[1:]
+    return solids
+
+
+@pytest.fixture
+def model_cq_layered_torus():
+    solids = [cq.Solid.makeTorus(10, 1)]
+    for _ in range(3):
+        solids.append(solids[-1].Faces()[0].thicken(1))
+
     solids = solids[1:]
     return solids
 
@@ -33,7 +58,6 @@ def model_ocp_layered_torus(model_bd_layered_torus):
 def model_bd_offsetboxes():
     b1 = bd.Solid.make_box(10, 10, 10)
     b2 = b1.transformed(offset=(0, 5, 10))
-    # b2 = bd.Solid.make_box(10, 10, 10, plane=bd.Plane.XY.offset(11))
 
     return [b1, b2]
 
@@ -47,9 +71,18 @@ def geom_imprintedboxes(model_bd_offsetboxes):
     return geom_imprinted
 
 
+@pytest.fixture
+def model_ocp_layered_torus_cq(model_cq_layered_torus):
+    return [s.wrapped for s in model_cq_layered_torus]
+
+
 @pytest.mark.parametrize(
     "fixture",
-    [("model_bd_layered_torus"), ("model_ocp_layered_torus")],
+    [
+        ("model_bd_layered_torus"),
+        ("model_cq_layered_torus"),
+        ("model_ocp_layered_torus"),
+    ],
 )
 def test_geometry_init(fixture, request):
     solids = request.getfixturevalue(fixture)
