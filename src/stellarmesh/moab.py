@@ -223,7 +223,7 @@ class DAGMCSurface(DAGMCEntitySet):
     def boundary(self) -> Optional[str]:
         """Name of the boundary condition assigned to this surface."""
         for group in self.groups:
-            if self in group and group.name.startswith("boundary:"):
+            if group.name.startswith("boundary:"):
                 return group.name[9:]
         return None
 
