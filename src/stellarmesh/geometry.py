@@ -11,12 +11,12 @@ from __future__ import annotations
 import logging
 import warnings
 from typing import (
+    Optional,
     Protocol,
     Sequence,
+    Type,
     overload,
 )
-
-from build123d import Optional, Type
 
 try:
     from OCP.BOPAlgo import BOPAlgo_MakeConnected
