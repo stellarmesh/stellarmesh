@@ -7542,8 +7542,8 @@ packages:
   requires_python: '>=3.9'
 - pypi: ./
   name: stellarmesh
-  version: 1.0.1.dev0+ga535bebcc.d20250916
-  sha256: abac3f3f14eb57b8c87d3f37a484d1e6c6b3e8a15b816f543f704eb5eb908f1c
+  version: 1.0.1.dev1+gd8286915f.d20250917
+  sha256: 2131b98b8e960f40535554d21b1d65d7873e1a9ff50a67f618cd39c120e25081
   requires_dist:
   - numpy
   - pymmg

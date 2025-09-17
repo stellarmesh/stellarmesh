@@ -2,6 +2,7 @@
    :width: 100%
    :align: center
 
+.. badges:
 
 |Tests| |PyPI Version| |Conda Version|
 
@@ -61,21 +62,7 @@ Example
    :align: center
    :alt: Rendered mesh with normals.
 
-   Rendered mesh with normals.
-
-
-.. note::
-   Stellarmesh uses the logging library for debug, info and warning messages. Set the level with:
-
-
-   .. code:: python
-
-      import logging
-
-      logging.basicConfig() # Required in Jupyter to correctly set output stream
-      logging.getLogger("stellarmesh").setLevel(logging.INFO)
-
-
+.. centered:: *Rendered mesh with normals.*
 
 ----------------
 Acknowledgements
@@ -84,11 +71,8 @@ Acknowledgements
 Stellarmesh is originally a project of Thea Energy, who are building the
 world’s first planar coil stellarator.
 
-.. raw:: html
-
-   <img src="https://github.com/user-attachments/assets/37b9ba1c-b22c-4837-b226-a6212854127e" width="200px">
-
-.. raw:: html
+.. figure:: https://github.com/user-attachments/assets/37b9ba1c-b22c-4837-b226-a6212854127e
+   :width: 200px
 
 .. |Tests| image:: https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg
    :target: https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml
