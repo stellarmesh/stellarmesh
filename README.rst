@@ -2,9 +2,7 @@
    :width: 100%
    :align: center
 
-.. badges:
-
-|Tests| |PyPI Version| |Conda Version|
+|tests| |pypi_version| |conda_version|
 
 Stellarmesh is a meshing library for nuclear workflows. Principally, it
 supports the creation of DAGMC geometry from CAD models.
@@ -58,11 +56,17 @@ Example
 
 
 .. figure:: https://github.com/Thea-Energy/stellarmesh/raw/main/docs/torus-mesh.png
-   :width: 80%
+   :width: 100%
    :align: center
    :alt: Rendered mesh with normals.
 
-.. centered:: *Rendered mesh with normals.*
+.. raw:: html
+
+   <div align="center">
+      <it>Rendered mesh with normals.</it>
+   </div>
+
+.. raw:: html
 
 ----------------
 Acknowledgements
@@ -74,9 +78,14 @@ world’s first planar coil stellarator.
 .. figure:: https://github.com/user-attachments/assets/37b9ba1c-b22c-4837-b226-a6212854127e
    :width: 200px
 
-.. |Tests| image:: https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml/badge.svg
+.. |tests| image:: https://img.shields.io/github/actions/workflow/status/stellarmesh/stellarmesh/.github%2Fworkflows%2Ftest.yml?label=Tests
    :target: https://github.com/stellarmesh/stellarmesh/actions/workflows/test.yml
-.. |PyPI Version| image:: https://img.shields.io/pypi/v/stellarmesh.svg
-   :target: https://pypi.org/project/stellarmesh/
-.. |Conda Version| image:: https://img.shields.io/conda/vn/conda-forge/stellarmesh.svg
+   :alt: Tests
+
+.. |pypi_version| image:: https://img.shields.io/pypi/v/stellarmesh
+   :target: https://pypi.org/project/stellarmesh
+   :alt: PyPI Version
+
+.. |conda_version| image:: https://img.shields.io/conda/vn/conda-forge/stellarmesh
    :target: https://anaconda.org/conda-forge/stellarmesh
+   :alt: Conda Version
