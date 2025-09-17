@@ -60,14 +60,6 @@ Example
    :align: center
    :alt: Rendered mesh with normals.
 
-.. raw:: html
-
-   <div align="center">
-      <it>Rendered mesh with normals.</it>
-   </div>
-
-.. raw:: html
-
 ----------------
 Acknowledgements
 ----------------
