@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm[simple]>=8"]
+requires = ["setuptools>=80", "setuptools-scm[simple]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "stellarmesh"
 authors = [{ name = "Alex Koen" }]
 dynamic = ["version"]
 description = "Meshing library for nuclear workflows."
-readme = "README.md"
+readme = "README.rst"
 requires-python = ">=3.11"
 dependencies = ["numpy", "pymmg", "meshio[all]"]
 

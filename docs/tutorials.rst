@@ -26,6 +26,18 @@ Most Stellarmesh workflows will resemble the following. Here:
    h5m.write("dagmc.h5m")
 
 
+.. note::
+   Stellarmesh uses the logging library for debug, info and warning messages. Set the level with:
+
+
+   .. code:: python
+
+      import logging
+
+      logging.basicConfig() # Required in Jupyter to correctly set output stream
+      logging.getLogger("stellarmesh").setLevel(logging.INFO)
+
+
 ---------
 Tutorials
 ---------
