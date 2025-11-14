@@ -147,8 +147,8 @@ def model_bd_stellarator_plasma():
 
 def test_mesh_overlap(model_bd_stellarator_plasma):
     plasma = model_bd_stellarator_plasma
-    b1 = bd.thicken(plasma, 5)
-    b2 = bd.thicken(b1.faces()[0], 5)
+    b1 = bd.thicken(plasma, 5).solid()
+    b2 = bd.thicken(b1.faces()[0], 5).solid()
 
     def check_overlap(tol_linear):
         geom = sm.Geometry(solids=[b1, b2], material_names=[""] * 2)

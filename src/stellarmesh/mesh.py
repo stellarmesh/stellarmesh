@@ -479,6 +479,9 @@ class SurfaceMesh(Mesh):
                 surface_bc_map[bc].append(surface_tag)
 
             gmsh.model.occ.synchronize()
+
+            assert len(gmsh.model.get_entities(3)) == len(geometry.solids)
+
             for material, solid_tags in material_solid_map.items():
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
             for bc, surface_tags in surface_bc_map.items():

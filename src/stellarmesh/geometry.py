@@ -25,6 +25,7 @@ try:
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.STEPControl import STEPControl_Reader
     from OCP.TopAbs import TopAbs_ShapeEnum
+    from OCP.TopAbs import TopAbs_SOLID
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape, TopoDS_Shell, TopoDS_Solid
 except ImportError as e:
@@ -103,7 +104,11 @@ class Geometry:
 
                 if s_wrapped is None:
                     raise ValueError(
-                        f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
+                        f"Solid {i} has no wrapped TopoDS_Shape. Is it valid?"
+                    )
+                elif s_wrapped.ShapeType() != TopAbs_SOLID:
+                    raise ValueError(
+                        f"Solid {i} is not of type TopABS_Solid but rather of type {s_wrapped.ShapeType().name}"
                     )
 
                 self.solids.append(s_wrapped)
