@@ -197,10 +197,20 @@ class DAGMCCurve(DAGMCEntitySet):
     def curve_sense(
         self, curve_senses: Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
     ):
-        ents_data = [curve_sense[0].handle for curve_sense in curve_senses]
-        sense_data = [curve_sense[1] for curve_sense in curve_senses]
-        self._tag_set_data(self.model.curve_sense_tags[0], ents_data)
-        self._tag_set_data(self.model.curve_sense_tags[1], sense_data)
+        ents_data = np.array(
+            [curve_sense[0].handle for curve_sense in curve_senses], dtype=np.uint64
+        )
+        sense_data = np.array(
+            [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
+        )
+
+        self.model._core.tag_get_len(self.model.curve_sense_tags[0])
+        # self.model._core.tag_set_data(
+        #     self.model.curve_sense_tags[0], self.handle, ents_data
+        # )
+        # self.model._core.tag_set_data(
+        #     self.model.curve_sense_tags[1], self.handle, sense_data
+        # )
 
         parents = self.model._core.get_parent_meshsets(self.handle)
         for parent in parents:
@@ -452,15 +462,15 @@ class MOABModel:
             self._core.tag_get_handle(
                 "GEOM_SENSE_N_ENTS",
                 0,
-                pymoab.types.MB_TYPE_INTEGER,
-                pymoab.types.MB_TAG_SPARSE,
+                pymoab.types.MB_TYPE_HANDLE,
+                pymoab.types.MB_TAG_DENSE | pymoab.types.MB_TAG_VARLEN,
                 create_if_missing=True,
             ),
             self._core.tag_get_handle(
                 "GEOM_SENSE_N_SENSES",
                 0,
-                pymoab.types.MB_TYPE_HANDLE,
-                pymoab.types.MB_TAG_SPARSE,
+                pymoab.types.MB_TYPE_INTEGER,
+                pymoab.types.MB_TAG_SPARSE | pymoab.types.MB_TAG_VARLEN,
                 create_if_missing=True,
             ),
         )
@@ -719,7 +729,9 @@ class DAGMCModel(MOABModel):
                         f"Non-triangular element in surface {surface_tag}: {element_types}"
                     )
 
-                triangles = core.create_elements(pymoab.types.MBTRI, node_tags_list[0])
+                triangles = core.create_elements(
+                    pymoab.types.MBTRI, node_tags_list[0].reshape(-1, 3)
+                )
                 core.add_entities(surface_set.handle, triangles)
 
             # 3. Add curves
@@ -733,11 +745,16 @@ class DAGMCModel(MOABModel):
                     1, curve_tag
                 )
 
+                # Set curve senses
                 upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
-                curve_sense = ((surfaces[a], 1) for a in upward_adjacencies)
+                curve_sense = tuple((surfaces[a], 1) for a in upward_adjacencies)
+                # FIXME(akoen): This sets all curve senses to positive, which is
+                # incorrect, but possible non-fatal
                 curve_set.curve_sense = curve_sense
 
-                edges = core.create_element(pymoab.types.MBEDGE, node_tags_list[0])
+                edges = core.create_element(
+                    pymoab.types.MBEDGE, node_tags_list[0].reshape(-1, 2)
+                )
                 core.add_entities(curve_set.handle, edges)
 
             # 4. Add volume sets and surface sense
