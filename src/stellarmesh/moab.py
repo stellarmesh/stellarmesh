@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import warnings
 from functools import cached_property
-from typing import Optional, Union
+from typing import Literal, Optional, Sequence, Union
 
 import numpy as np
 
@@ -31,6 +31,7 @@ except ImportError as e:
 
 try:
     import pymoab.core
+    import pymoab.tag
     import pymoab.types
     from pymoab.rng import Range
 except ImportError as e:
@@ -171,6 +172,58 @@ class DAGMCEntitySet(EntitySet):
         return [group for group in self.model.groups if self in group]
 
 
+class DAGMCCurve(DAGMCEntitySet):
+    """DAGMC curve entity."""
+
+    @property
+    def curve_sense(
+        self,
+    ) -> Optional[Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]]:
+        """Curve sense data."""
+        try:
+            ents = self.model._core.tag_get_data(
+                self.model.curve_sense_tags[0], self.handle, flat=True
+            )
+            surfaces = [DAGMCSurface(self.model, ent) for ent in ents]
+            senses = self.model._core.tag_get_data(
+                self.model.curve_sense_tags[1], self.handle, flat=True
+            )
+        except RuntimeError:
+            return None
+
+        return list(zip(surfaces, senses, strict=True))
+
+    @curve_sense.setter
+    def curve_sense(
+        self, curve_senses: Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
+    ):
+        ents_data = [curve_sense[0].handle for curve_sense in curve_senses]
+        sense_data = [curve_sense[1] for curve_sense in curve_senses]
+        self._tag_set_data(self.model.curve_sense_tags[0], ents_data)
+        self._tag_set_data(self.model.curve_sense_tags[1], sense_data)
+
+        parents = self.model._core.get_parent_meshsets(self.handle)
+        for parent in parents:
+            if parent not in ents_data:
+                # REVIEW (akoen): pymoab seems not to have a remove_parent method.
+                logger.warning(
+                    f"Curve has existing parent {parent} that cannot be removed."
+                )
+        # Establish parent-child relationships
+        for surf_handle in ents_data:
+            self.model._core.add_parent_child(surf_handle, self.handle)
+
+    @property
+    def adjacent_surfaces(self) -> list[DAGMCSurface]:
+        """Get adjacent surfaces.
+
+        Returns:
+            Adjacent surfaces.
+        """
+        parent_entities = self.model._core.get_parent_meshsets(self.handle)
+        return [DAGMCSurface(self.model, e) for e in parent_entities]
+
+
 class DAGMCSurface(DAGMCEntitySet):
     """DAGMC surface entity."""
 
@@ -181,7 +234,7 @@ class DAGMCSurface(DAGMCEntitySet):
 
     @forward_volume.setter
     def forward_volume(self, volume: DAGMCVolume):
-        self.surf_sense = [volume, self.reverse_volume]
+        self.surf_sense = (volume, self.reverse_volume)
 
     @property
     def reverse_volume(self) -> Optional[DAGMCVolume]:
@@ -190,7 +243,7 @@ class DAGMCSurface(DAGMCEntitySet):
 
     @reverse_volume.setter
     def reverse_volume(self, volume: DAGMCVolume):
-        self.surf_sense = [self.forward_volume, volume]
+        self.surf_sense = (self.forward_volume, volume)
 
     @property
     def surf_sense(self) -> list[Optional[DAGMCVolume]]:
@@ -208,12 +261,19 @@ class DAGMCSurface(DAGMCEntitySet):
         ]
 
     @surf_sense.setter
-    def surf_sense(self, volumes: list[Optional[DAGMCVolume]]):
+    def surf_sense(self, volumes: tuple[Optional[DAGMCVolume], Optional[DAGMCVolume]]):
         sense_data = [
             vol.handle if vol is not None else np.uint64(0) for vol in volumes
         ]
         self._tag_set_data(self.model.surf_sense_tag, sense_data)
 
+        parents = self.model._core.get_parent_meshsets(self.handle)
+        for parent in parents:
+            if parent not in sense_data:
+                # REVIEW (akoen): pymoab seems not to have a remove_parent method.
+                logger.warning(
+                    f"Surface has existing parent {parent} that cannot be removed."
+                )
         # Establish parent-child relationships
         for vol in volumes:
             if vol is not None:
@@ -386,6 +446,26 @@ class MOABModel:
         )
 
     @cached_property
+    def curve_sense_tags(self) -> tuple[pymoab.tag.Tag, pymoab.tag.Tag]:
+        """Curve sense tags."""
+        return (
+            self._core.tag_get_handle(
+                "GEOM_SENSE_N_ENTS",
+                0,
+                pymoab.types.MB_TYPE_INTEGER,
+                pymoab.types.MB_TAG_SPARSE,
+                create_if_missing=True,
+            ),
+            self._core.tag_get_handle(
+                "GEOM_SENSE_N_SENSES",
+                0,
+                pymoab.types.MB_TYPE_HANDLE,
+                pymoab.types.MB_TAG_SPARSE,
+                create_if_missing=True,
+            ),
+        )
+
+    @cached_property
     def faceting_tol_tag(self) -> pymoab.tag.Tag:
         """Faceting tolerance tag."""
         return self._core.tag_get_handle(
@@ -507,6 +587,22 @@ class DAGMCModel(MOABModel):
             surface.global_id = global_id
         return surface
 
+    def create_curve(self, global_id: Optional[int] = None) -> DAGMCCurve:
+        """Create new curve.
+
+        Args:
+            global_id: Global ID.
+
+        Returns:
+            curve object.
+        """
+        curve = DAGMCCurve(self, self._core.create_meshset())
+        curve.geom_dimension = 1
+        curve.category = "Curve"
+        if global_id is not None:
+            curve.global_id = global_id
+        return curve
+
     @property
     def groups(self) -> list[DAGMCGroup]:
         """Get list of groups."""
@@ -572,7 +668,15 @@ class DAGMCModel(MOABModel):
             if gmsh.model.mesh.get_elements(3)[1]:
                 logger.warning("Discarding volume elements from mesh.")
 
-            # 1. Add surface elements and boundary conditions
+            # 1. Add nodes
+            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            moab_nodes = core.create_vertices(coords)
+
+            for g, m in zip(node_tags, moab_nodes, strict=True):
+                if g != m:
+                    raise RuntimeError("Gmsh and MOAB tags do not match")
+
+            # 2. Add surface elements and boundary conditions
             surfaces: dict[int, DAGMCSurface] = {}
             surface_dimtags = gmsh.model.get_entities(2)
             surface_tags = [s[1] for s in surface_dimtags]
@@ -606,18 +710,37 @@ class DAGMCModel(MOABModel):
                     volume_set.material = "void"
                     surface_set.forward_volume = volume_set
 
-                # Write elements to MOAB. STL export/import is very efficient.
-                with tempfile.NamedTemporaryFile(
-                    suffix=".stl", delete=True
-                ) as stl_file:
-                    # We add a temp dummy surface physical group to constrain
-                    # STL export.
-                    group_tag = gmsh.model.add_physical_group(2, [surface_tag])
-                    gmsh.write(stl_file.name)
-                    gmsh.model.remove_physical_groups([(2, group_tag)])
-                    core.load_file(stl_file.name, surface_set.handle)
+                # Add elements to MOAB
+                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
+                    2, surface_tag
+                )
+                if len(element_types) != 1 or element_types[0] != 2:
+                    raise RuntimeError(
+                        f"Non-triangular element in surface {surface_tag}: {element_types}"
+                    )
 
-            # 2. Add volume sets and surface sense
+                triangles = core.create_elements(pymoab.types.MBTRI, node_tags_list[0])
+                core.add_entities(surface_set.handle, triangles)
+
+            # 3. Add curves
+            curve_dimtags = gmsh.model.get_entities(1)
+            curve_tags = [c[1] for c in curve_dimtags]
+            for i, curve_tag in enumerate(curve_tags):
+                curve_set = model.create_curve(curve_tag)
+
+                # Add elements to MOAB
+                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
+                    1, curve_tag
+                )
+
+                upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
+                curve_sense = ((surfaces[a], 1) for a in upward_adjacencies)
+                curve_set.curve_sense = curve_sense
+
+                edges = core.create_element(pymoab.types.MBEDGE, node_tags_list[0])
+                core.add_entities(curve_set.handle, edges)
+
+            # 4. Add volume sets and surface sense
             known_surfaces: set[int] = set()
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
