@@ -16,6 +16,7 @@ import warnings
 from functools import cached_property
 from typing import Literal, Optional, Sequence, Union
 
+import h5py
 import numpy as np
 
 from ._core import PathLike
@@ -181,6 +182,14 @@ class DAGMCCurve(DAGMCEntitySet):
     ) -> Optional[Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]]:
         """Curve sense data."""
         try:
+            if (
+                hasattr(self.model, "_deferred_curve_senses")
+                and self.handle in self.model._deferred_curve_senses
+            ):
+                ents, senses = self.model._deferred_curve_senses[self.handle]
+                surfaces = [DAGMCSurface(self.model, ent) for ent in ents]
+                return list(zip(surfaces, senses, strict=True))
+
             ents = self.model._core.tag_get_data(
                 self.model.curve_sense_tags[0], self.handle, flat=True
             )
@@ -204,13 +213,7 @@ class DAGMCCurve(DAGMCEntitySet):
             [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
         )
 
-        self.model._core.tag_get_len(self.model.curve_sense_tags[0])
-        # self.model._core.tag_set_data(
-        #     self.model.curve_sense_tags[0], self.handle, ents_data
-        # )
-        # self.model._core.tag_set_data(
-        #     self.model.curve_sense_tags[1], self.handle, sense_data
-        # )
+        self.model._deferred_curve_senses[self.handle] = (ents_data, sense_data)
 
         parents = self.model._core.get_parent_meshsets(self.handle)
         for parent in parents:
@@ -463,7 +466,7 @@ class MOABModel:
                 "GEOM_SENSE_N_ENTS",
                 0,
                 pymoab.types.MB_TYPE_HANDLE,
-                pymoab.types.MB_TAG_DENSE | pymoab.types.MB_TAG_VARLEN,
+                pymoab.types.MB_TAG_SPARSE | pymoab.types.MB_TAG_VARLEN,
                 create_if_missing=True,
             ),
             self._core.tag_get_handle(
@@ -549,6 +552,84 @@ class MOABModel:
 
 class DAGMCModel(MOABModel):
     """DAGMC Model."""
+
+    def __init__(self, core_or_file: Union[PathLike, pymoab.core.Core]):
+        super().__init__(core_or_file)
+        self._deferred_curve_senses: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+    def write(self, filename: PathLike):
+        """Write DAGMC model to .h5m, .vtk, or other file.
+
+        Args:
+            filename: Filename with format-appropriate extension.
+        """
+        super().write(filename)
+
+        if str(filename).endswith(".h5m") and self._deferred_curve_senses:
+            self._write_deferred_tags(filename)
+
+    def _write_deferred_tags(self, filename: PathLike):
+        """Write deferred tags to HDF5 file."""
+        with h5py.File(filename, "r+") as f:
+            handles = sorted(self._deferred_curve_senses.keys())
+
+            # GEOM_SENSE_N_ENTS (handles)
+            ents_values = []
+            ents_indices = [0]
+
+            # GEOM_SENSE_N_SENSES (integers)
+            senses_values = []
+            senses_indices = [0]
+
+            for h in handles:
+                ents, senses = self._deferred_curve_senses[h]
+
+                ents_values.extend(ents)
+                ents_indices.append(ents_indices[-1] + len(ents))
+
+                senses_values.extend(senses)
+                senses_indices.append(senses_indices[-1] + len(senses))
+
+            self._write_single_tag(
+                f,
+                "GEOM_SENSE_N_ENTS",
+                handles,
+                ents_values,
+                ents_indices,
+                np.uint64,
+            )
+            self._write_single_tag(
+                f,
+                "GEOM_SENSE_N_SENSES",
+                handles,
+                senses_values,
+                senses_indices,
+                np.int32,
+            )
+
+    def _write_single_tag(self, f, tag_name, handles, values, indices, dtype):
+        if "tstt/tags" not in f:
+            raise RuntimeError("No tstt/tags group")
+
+        tags_grp = f["tstt/tags"]
+        if tag_name not in tags_grp:
+            logger.warning(f"Tag {tag_name} not found in HDF5 file. Skipping.")
+            return
+
+        tag_grp = tags_grp[tag_name]
+
+        # Create/Overwrite datasets
+        if "id_list" in tag_grp:
+            del tag_grp["id_list"]
+        tag_grp.create_dataset("id_list", data=np.array(handles, dtype=np.uint64))
+
+        if "values" in tag_grp:
+            del tag_grp["values"]
+        tag_grp.create_dataset("values", data=np.array(values, dtype=dtype))
+
+        if "indices" in tag_grp:
+            del tag_grp["indices"]
+        tag_grp.create_dataset("indices", data=np.array(indices, dtype=np.uint64))
 
     def create_group(self, group_name: str) -> DAGMCGroup:
         """Create new group.
@@ -752,10 +833,14 @@ class DAGMCModel(MOABModel):
                 # incorrect, but possible non-fatal
                 curve_set.curve_sense = curve_sense
 
-                edges = core.create_element(
-                    pymoab.types.MBEDGE, node_tags_list[0].reshape(-1, 2)
-                )
-                core.add_entities(curve_set.handle, edges)
+                if len(node_tags_list) != 0:
+                    # TODO (this may only have sequential edges)
+                    edges = core.create_elements(
+                        pymoab.types.MBEDGE, node_tags_list[0].reshape(-1, 2)
+                    )
+                    core.add_entities(curve_set.handle, edges)
+                else:
+                    logger.warning(f"Curve {curve_tag} has no elements.")
 
             # 4. Add volume sets and surface sense
             known_surfaces: set[int] = set()
@@ -784,6 +869,14 @@ class DAGMCModel(MOABModel):
                 # the current volume has a forward sense and the second time a reverse
                 # sense.
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
+
+                # TODO(remove)
+                print(
+                    gmsh.model.get_boundary(
+                        [(3, volume_tag)], oriented=True, combined=True
+                    )
+                )
+
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
                     surface_set = surfaces[surface_tag]
