@@ -8,6 +8,7 @@ desc: MOABModel class represents a MOAB model.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -20,7 +21,7 @@ import h5py
 import numpy as np
 
 from ._core import PathLike
-from .mesh import Mesh
+from .mesh import Mesh, SurfaceMetadata
 
 try:
     import gmsh
@@ -778,14 +779,20 @@ class DAGMCModel(MOABModel):
                 surface_groups = gmsh.model.get_physical_groups_for_entity(
                     2, surface_tag
                 )
-                if (num_groups := len(surface_groups)) not in [0, 1]:
+                boundary_groups = []
+                for pg in surface_groups:
+                    n = gmsh.model.get_physical_name(2, pg)
+                    if n.startswith("boundary:"):
+                        boundary_groups.append(pg)
+
+                if (num_groups := len(boundary_groups)) not in [0, 1]:
                     raise ValueError(
                         f"Surface with tag {surface_tag} and global_id {i}"
-                        f"belongs to {num_groups} physical groups, should be 0 "
+                        f"belongs to {num_groups} boundary physical groups, should be 0 "
                         f"or 1."
                     )
                 elif num_groups == 1:
-                    boundary_name = gmsh.model.get_physical_name(2, surface_groups[0])
+                    boundary_name = gmsh.model.get_physical_name(2, boundary_groups[0])
                     surface_set.boundary = boundary_name[9:]
 
                 volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[
@@ -851,45 +858,46 @@ class DAGMCModel(MOABModel):
                     logger.warning(f"Curve {curve_tag} has no elements.")
 
             # 4. Add volume sets and surface sense
-            known_surfaces: set[int] = set()
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
+            volume_map = {}
+
             for i, volume_tag in enumerate(volume_tags):
                 volume_set = model.create_volume(i)
+                volume_map[volume_tag] = volume_set
 
-                # Add volume to its physical group, which stores metadata incl. material
-                # TODO(akoen): should this be a parent-child relationship?
-                # https://github.com/Thea-Energy/neutronics-cad/issues/2
                 vol_groups = gmsh.model.get_physical_groups_for_entity(3, volume_tag)
-                if (num_groups := len(vol_groups)) != 1:
+                mat_groups = []
+                for pg in vol_groups:
+                    n = gmsh.model.get_physical_name(3, pg)
+                    if n.startswith("mat:"):
+                        mat_groups.append(pg)
+
+                if (num_groups := len(mat_groups)) != 1:
                     raise ValueError(
                         f"Volume with tag {volume_tag} and global_id {i} "
-                        f"belongs to {num_groups} physical groups, should be 1."
+                        f"belongs to {num_groups} material physical groups, should be 1."
                     )
-                mat_name = gmsh.model.get_physical_name(3, vol_groups[0])
+                mat_name = gmsh.model.get_physical_name(3, mat_groups[0])
                 volume_set.material = mat_name[4:]
 
-                # Add surfaces to MOAB core, respecting surface sense.
-                # Logic: Gmsh meshes volumes in order. When it gets to the first volume,
-                # it points all adjacent surfaces normals outward. For each subsequent
-                # volume, it points the surface normals outwards iff the surface hasn't
-                # yet been encountered. Thus, the first time a surface is encountered,
-                # the current volume has a forward sense and the second time a reverse
-                # sense.
-                adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
+            dim_tags = gmsh.model.get_physical_groups(2)
+            for dim, tag in dim_tags:
+                name = gmsh.model.get_physical_name(dim, tag)
+                try:
+                    metadata = SurfaceMetadata.from_gmsh_name(name)
+                except (ValueError, TypeError):
+                    continue
 
-                surface_tags = adjacencies[1]
-                for surface_tag in surface_tags:
-                    surface_set = surfaces[surface_tag]
-                    if surface_tag not in known_surfaces:
-                        known_surfaces.add(surface_tag)
-                        surface_set.forward_volume = volume_set
-                    else:
-                        logger.debug(
-                            f"Surface {surface_tag} has been seen before"
-                            ", setting reverse volume"
-                        )
-                        surface_set.reverse_volume = volume_set
+                entities = gmsh.model.get_entities_for_physical_group(dim, tag)
+                for surface_tag in entities:
+                    if surface_set := surfaces.get(surface_tag):
+                        if metadata.forward_volume_tag is not None:
+                            if vol := volume_map.get(metadata.forward_volume_tag):
+                                surface_set.forward_volume = vol
+                        if metadata.reverse_volume_tag is not None:
+                            if vol := volume_map.get(metadata.reverse_volume_tag):
+                                surface_set.reverse_volume = vol
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()

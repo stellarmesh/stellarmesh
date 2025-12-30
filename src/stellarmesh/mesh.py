@@ -14,10 +14,10 @@ import subprocess
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Optional, get_type_hints
+from typing import Optional, Union, get_type_hints
+from urllib.parse import parse_qs, urlencode
 
 import meshio
 import numpy as np
@@ -186,6 +186,8 @@ class OCCSurfaceOptions:
 
         if self.tol_linear:
             # DeflectionInterior is set to Deflection in OCCT
+            params
+            # DeflectionInterior is set to Deflection in OCCT
             params.Deflection = self.tol_linear
         else:
             params.Deflection = float("inf")
@@ -207,27 +209,61 @@ class OCCSurfaceOptions:
 class EntityMetadata:
     """Metadata for a Mesh elementary entity."""
 
-    def to_json(self) -> str:
-        """Converts the dataclass instance to a JSON string."""
-        return json.dumps(asdict(self))
+    _mesh: Mesh = field(init=False)
+    _dim: int = field(init=False)
+    _tag: int = field(init=False)
+
+    def _attach(self, mesh: Mesh, dim: int, tag: int):
+        object.__setattr__(self, "_mesh", mesh)
+        object.__setattr__(self, "_dim", dim)
+        object.__setattr__(self, "_tag", tag)
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if not name.startswith("_") and getattr(self, "_mesh", None):
+            self._mesh.write_metadata(self._dim, self._tag, self)
+
+    def to_str(self) -> str:
+        """Converts the dataclass instance to a url string."""
+        data = asdict(self)
+        public_data = {k: v for k, v in data.items() if not k.startswith("_")}
+        return urlencode(public_data)
 
     @classmethod
-    def from_json(cls, json_str: str):
+    def from_str(cls, url_str: str):
         """Create an EntityMetadata from an encoded string."""
-        data = json.loads(json_str)
+        data = {k: v[0] for k, v in parse_qs(url_str).items()}
         # get_type_hints captures fields from User AND any subclass
         type_hints = get_type_hints(cls)
 
         # Validation logic
         for key, expected_type in type_hints.items():
+            if key.startswith("_"):
+                continue
+            # Handle Optional types
+            is_optional = False
+            if (
+                hasattr(expected_type, "__origin__")
+                and expected_type.__origin__ is Union
+            ):
+                args = expected_type.__args__
+                if type(None) in args:
+                    is_optional = True
+                    # Assuming Optional[T] is Union[T, NoneType]
+                    # We strictly check against the non-None type if present, but for now
+                    # just skipping missing check is enough.
+
             if key not in data:
+                if is_optional:
+                    continue
                 raise ValueError(f"Missing field: {key}")
 
-            # Simple type check
-            if not isinstance(data[key], expected_type):
-                raise TypeError(
-                    f"Field '{key}' expected {expected_type}, got {type(data[key])}"
-                )
+            # Simple type check (skip for Optional for simplicity or improve logic)
+            if data[key] is not None and not is_optional:
+                if not isinstance(data[key], expected_type):
+                    raise TypeError(
+                        f"Field '{key}' expected {expected_type}, got {type(data[key])}"
+                    )
 
         return cls(**data)
 
@@ -235,15 +271,31 @@ class EntityMetadata:
 
 
 @dataclass(kw_only=True)
-class SurfaceMetadata:
+class SurfaceMetadata(EntityMetadata):
     """Metadata for a Mesh elementary surface."""
 
-    forward_volume_tag: int
-    reverse_volume_tag: int
+    forward_volume_tag: Optional[int] = None
+    reverse_volume_tag: Optional[int] = None
+
+    @property
+    def forward_volume(self) -> Optional[int]:
+        return self.forward_volume_tag
+
+    @forward_volume.setter
+    def forward_volume(self, value: Optional[int]):
+        self.forward_volume_tag = value
+
+    @property
+    def reverse_volume(self) -> Optional[int]:
+        return self.reverse_volume_tag
+
+    @reverse_volume.setter
+    def reverse_volume(self, value: Optional[int]):
+        self.reverse_volume_tag = value
 
 
 @dataclass(kw_only=True)
-class VolumeMetadata:
+class VolumeMetadata(EntityMetadata):
     """Metadata for a Mesh elementary volume."""
 
 
@@ -389,32 +441,66 @@ class Mesh:
             mesh_scaled._save_changes()
         return mesh_scaled
 
-    def write_metadata(
-        self, dim: int, tag: int, metadata: EntityMetadata, update: bool = True
-    ):
-        with self:
-            metadata_str = metadata.to_json()
-            physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
-            pg_num_ents = [
-                len(gmsh.model.get_entities_for_physical_group(dim, pg))
-                for pg in physical_groups
-            ]
+    def _get_metadata_group(
+        self, dim: int, tag: int, create: bool = True
+    ) -> Optional[int]:
+        physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
+        for pg in physical_groups:
+            entities = gmsh.model.get_entities_for_physical_group(dim, pg)
+            if len(entities) == 1:
+                return pg
+        pg = gmsh.model.add_physical_group(
+            dim,
+            [tag],
+            tag,
+        )
+        return pg
 
-            if 1 in pg_num_ents and update:
-                gmsh.model.set_physical_name(
-                    dim, physical_groups(list(pg_num_ents).index(1)), metadata_str
-                )
-            elif not update:
-                raise RuntimeError(
-                    f"Entitity ({dim}, {tag}) does not have existing metadata and update = False."
-                )
+    def write_metadata(self, dim: int, tag: int, metadata: EntityMetadata):
+        metadata_str = metadata.to_str()
+        metadata_group = self._get_metadata_group(dim, tag, create=True)
+        gmsh.model.set_physical_name(dim, metadata_group, metadata_str)
+        self._save_changes()
+
+    def entity_metadata(self, dim: int, tag: int) -> EntityMetadata:
+        """Get metadata for an entity.
+
+        Args:
+            dim: Entity dimension.
+            tag: Entity tag.
+
+        Returns:
+            Entity metadata.
+        """
+        self._check_is_initialized()
+        physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
+
+        metadata = None
+        for pg in physical_groups:
+            entities = gmsh.model.get_entities_for_physical_group(dim, pg)
+            if len(entities) == 1 and entities[0] == tag:
+                name = gmsh.model.get_physical_name(dim, pg)
+                try:
+                    if dim == 2:
+                        metadata = SurfaceMetadata.from_str(name)
+                    elif dim == 3:
+                        metadata = VolumeMetadata.from_str(name)
+                    else:
+                        metadata = EntityMetadata.from_str(name)
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+        if metadata is None:
+            if dim == 2:
+                metadata = SurfaceMetadata()
+            elif dim == 3:
+                metadata = VolumeMetadata()
             else:
-                gmsh.model.add_physical_group(dim, [tag], name=metadata_str)
+                metadata = EntityMetadata()
 
-            # for pg in physical_groups:
-            #     pg_ents = gmsh.model.get_entities_for_physical_group(dim, pg)
-
-            self._save_changes()
+        metadata._attach(self, dim, tag)
+        return metadata
 
     @staticmethod
     def _check_is_initialized():
@@ -566,6 +652,7 @@ class SurfaceMesh(Mesh):
 
             # Solids
             material_solid_map = defaultdict(list)
+            solid_tags_in_order = []
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = cls._import_occ(s)
                 if dim_tags[0][0] != 3:
@@ -573,6 +660,7 @@ class SurfaceMesh(Mesh):
 
                 solid_tag = dim_tags[0][1]
                 material_solid_map[m].append(solid_tag)
+                solid_tags_in_order.append(solid_tag)
 
             # Faces
             surface_bc_map = defaultdict(list)
@@ -594,6 +682,21 @@ class SurfaceMesh(Mesh):
                 gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
             for bc, surface_tags in surface_bc_map.items():
                 gmsh.model.add_physical_group(2, surface_tags, name=f"boundary:{bc}")
+
+            gmsh.model.occ.synchronize()
+
+            # Calculate surface senses
+            # surface_senses: dict[int, SurfaceMetadata] = defaultdict(SurfaceMetadata)
+            known_surfaces = set()
+            for volume_tag in solid_tags_in_order:
+                _, surface_tags = gmsh.model.get_adjacencies(3, volume_tag)
+                for surface_tag in surface_tags:
+                    if surface_tag not in known_surfaces:
+                        known_surfaces.add(surface_tag)
+                        # surface_senses[surface_tag].forward_volume_tag = volume_tag
+                        mesh.entity_metadata(2, surface_tag).forward_volume = volume_tag
+                    else:
+                        mesh.entity_metadata(2, surface_tag).reverse_volume = volume_tag
 
             if type(options).__name__ == GmshSurfaceOptions.__name__:
                 cls._mesh_gmsh(options)  # type: ignore
