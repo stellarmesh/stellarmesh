@@ -8,15 +8,16 @@ desc: Mesh class wraps Gmsh functionality for geometry meshing.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, get_type_hints
 
 import meshio
 import numpy as np
@@ -202,6 +203,50 @@ class OCCSurfaceOptions:
         return params
 
 
+@dataclass(kw_only=True)
+class EntityMetadata:
+    """Metadata for a Mesh elementary entity."""
+
+    def to_json(self) -> str:
+        """Converts the dataclass instance to a JSON string."""
+        return json.dumps(asdict(self))
+
+    @classmethod
+    def from_json(cls, json_str: str):
+        """Create an EntityMetadata from an encoded string."""
+        data = json.loads(json_str)
+        # get_type_hints captures fields from User AND any subclass
+        type_hints = get_type_hints(cls)
+
+        # Validation logic
+        for key, expected_type in type_hints.items():
+            if key not in data:
+                raise ValueError(f"Missing field: {key}")
+
+            # Simple type check
+            if not isinstance(data[key], expected_type):
+                raise TypeError(
+                    f"Field '{key}' expected {expected_type}, got {type(data[key])}"
+                )
+
+        return cls(**data)
+
+    ...
+
+
+@dataclass(kw_only=True)
+class SurfaceMetadata:
+    """Metadata for a Mesh elementary surface."""
+
+    forward_volume_tag: int
+    reverse_volume_tag: int
+
+
+@dataclass(kw_only=True)
+class VolumeMetadata:
+    """Metadata for a Mesh elementary volume."""
+
+
 class Mesh:
     """A Gmsh mesh.
 
@@ -343,6 +388,33 @@ class Mesh:
                 )
             mesh_scaled._save_changes()
         return mesh_scaled
+
+    def write_metadata(
+        self, dim: int, tag: int, metadata: EntityMetadata, update: bool = True
+    ):
+        with self:
+            metadata_str = metadata.to_json()
+            physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
+            pg_num_ents = [
+                len(gmsh.model.get_entities_for_physical_group(dim, pg))
+                for pg in physical_groups
+            ]
+
+            if 1 in pg_num_ents and update:
+                gmsh.model.set_physical_name(
+                    dim, physical_groups(list(pg_num_ents).index(1)), metadata_str
+                )
+            elif not update:
+                raise RuntimeError(
+                    f"Entitity ({dim}, {tag}) does not have existing metadata and update = False."
+                )
+            else:
+                gmsh.model.add_physical_group(dim, [tag], name=metadata_str)
+
+            # for pg in physical_groups:
+            #     pg_ents = gmsh.model.get_entities_for_physical_group(dim, pg)
+
+            self._save_changes()
 
     @staticmethod
     def _check_is_initialized():
