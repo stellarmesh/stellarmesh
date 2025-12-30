@@ -214,9 +214,9 @@ class EntityMetadata:
     tag: int = field(init=False)
 
     def _attach(self, mesh: Mesh, dim: int, tag: int):
-        object.__setattr__(self, "_mesh", mesh)
-        object.__setattr__(self, "_dim", dim)
-        object.__setattr__(self, "tag", tag)
+        self._dim = dim
+        self.tag = tag
+        self._mesh = mesh
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
@@ -278,24 +278,8 @@ class EntityMetadata:
 class SurfaceMetadata(EntityMetadata):
     """Metadata for a Mesh elementary surface."""
 
-    forward_volume_tag: Optional[int] = None
-    reverse_volume_tag: Optional[int] = None
-
-    @property
-    def forward_volume(self) -> Optional[int]:
-        return self.forward_volume_tag
-
-    @forward_volume.setter
-    def forward_volume(self, value: Optional[int]):
-        self.forward_volume_tag = value
-
-    @property
-    def reverse_volume(self) -> Optional[int]:
-        return self.reverse_volume_tag
-
-    @reverse_volume.setter
-    def reverse_volume(self, value: Optional[int]):
-        self.reverse_volume_tag = value
+    forward_volume: Optional[int] = None
+    reverse_volume: Optional[int] = None
 
 
 @dataclass(kw_only=True)

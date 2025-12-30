@@ -884,18 +884,18 @@ class DAGMCModel(MOABModel):
             for dim, tag in dim_tags:
                 name = gmsh.model.get_physical_name(dim, tag)
                 try:
-                    metadata = SurfaceMetadata.from_gmsh_name(name)
+                    metadata = SurfaceMetadata.from_str(name)
                 except (ValueError, TypeError):
                     continue
 
                 entities = gmsh.model.get_entities_for_physical_group(dim, tag)
                 for surface_tag in entities:
                     if surface_set := surfaces.get(surface_tag):
-                        if metadata.forward_volume_tag is not None:
-                            if vol := volume_map.get(metadata.forward_volume_tag):
+                        if metadata.forward_volume is not None:
+                            if vol := volume_map.get(metadata.forward_volume):
                                 surface_set.forward_volume = vol
-                        if metadata.reverse_volume_tag is not None:
-                            if vol := volume_map.get(metadata.reverse_volume_tag):
+                        if metadata.reverse_volume is not None:
+                            if vol := volume_map.get(metadata.reverse_volume):
                                 surface_set.reverse_volume = vol
 
             all_entities = core.get_entities_by_handle(0)
