@@ -763,9 +763,9 @@ class DAGMCModel(MOABModel):
             node_tags, coords, _ = gmsh.model.mesh.get_nodes()
             moab_nodes = core.create_vertices(coords)
 
-            for g, m in zip(node_tags, moab_nodes, strict=True):
-                if g != m:
-                    raise RuntimeError("Gmsh and MOAB tags do not match")
+            # Create a mapping from Gmsh tag to MOAB handle
+            # Note: node_tags is int32 or int64, moab_nodes is uint64
+            tag_map = dict(zip(node_tags, moab_nodes, strict=True))
 
             # 2. Add surface elements and boundary conditions
             surfaces: dict[int, DAGMCSurface] = {}
@@ -810,8 +810,12 @@ class DAGMCModel(MOABModel):
                         f"Non-triangular element in surface {surface_tag}: {element_types}"
                     )
 
+                moab_conn = np.array(
+                    [tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
+                )
+
                 triangles = core.create_elements(
-                    pymoab.types.MBTRI, node_tags_list[0].reshape(-1, 3)
+                    pymoab.types.MBTRI, moab_conn.reshape(-1, 3)
                 )
                 core.add_entities(surface_set.handle, triangles)
 
@@ -835,8 +839,12 @@ class DAGMCModel(MOABModel):
 
                 if len(node_tags_list) != 0:
                     # TODO (this may only have sequential edges)
+                    moab_conn = np.array(
+                        [tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
+                    )
+
                     edges = core.create_elements(
-                        pymoab.types.MBEDGE, node_tags_list[0].reshape(-1, 2)
+                        pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
                     )
                     core.add_entities(curve_set.handle, edges)
                 else:
@@ -869,13 +877,6 @@ class DAGMCModel(MOABModel):
                 # the current volume has a forward sense and the second time a reverse
                 # sense.
                 adjacencies = gmsh.model.get_adjacencies(3, volume_tag)
-
-                # TODO(remove)
-                print(
-                    gmsh.model.get_boundary(
-                        [(3, volume_tag)], oriented=True, combined=True
-                    )
-                )
 
                 surface_tags = adjacencies[1]
                 for surface_tag in surface_tags:
