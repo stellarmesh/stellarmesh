@@ -8,7 +8,6 @@ desc: MOABModel class represents a MOAB model.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
