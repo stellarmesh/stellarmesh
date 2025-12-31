@@ -209,14 +209,9 @@ class OCCSurfaceOptions:
 class EntityMetadata:
     """Metadata for a Mesh elementary entity."""
 
-    _mesh: Mesh = field(init=False)
-    _dim: int = field(init=False)
-    tag: int = field(init=False)
-
-    def _attach(self, mesh: Mesh, dim: int, tag: int):
-        self._dim = dim
-        self.tag = tag
-        self._mesh = mesh
+    _mesh: Mesh
+    _dim: int
+    tag: int
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
@@ -230,7 +225,7 @@ class EntityMetadata:
         return urlencode(public_data)
 
     @classmethod
-    def from_str(cls, url_str: str):
+    def from_str(cls, mesh: Mesh, dim: int, tag: int, url_str: str):
         """Create an EntityMetadata from an encoded string."""
         data = {k: v[0] for k, v in parse_qs(url_str).items()}
         # get_type_hints captures fields from User AND any subclass
@@ -269,7 +264,13 @@ class EntityMetadata:
                             f"Field '{key}' expected {expected_type}, got {type(data[key])}"
                         ) from e
 
-        return cls(**{k: v for k, v in data.items() if k in init_fields})
+        data["_mesh"] = mesh
+        data["_dim"] = dim
+        data["tag"] = tag
+
+        return cls(
+            **{k: v for k, v in data.items() if k in init_fields},
+        )
 
     ...
 
@@ -473,20 +474,25 @@ class Mesh:
 
         if name == "":
             if dim == 2:
-                metadata = SurfaceMetadata()
+                metadata = SurfaceMetadata(_mesh=self, _dim=dim, tag=tag)
             elif dim == 3:
-                metadata = VolumeMetadata()
+                metadata = VolumeMetadata(_mesh=self, _dim=dim, tag=tag)
             else:
-                metadata = EntityMetadata()
+                metadata = EntityMetadata(_mesh=self, _dim=dim, tag=tag)
         else:
             if dim == 2:
-                metadata = SurfaceMetadata.from_str(name)
+                metadata = SurfaceMetadata.from_str(
+                    mesh=self, dim=dim, tag=tag, url_str=name
+                )
             elif dim == 3:
-                metadata = VolumeMetadata.from_str(name)
+                metadata = VolumeMetadata.from_str(
+                    mesh=self, dim=dim, tag=tag, url_str=name
+                )
             else:
-                metadata = EntityMetadata.from_str(name)
+                metadata = EntityMetadata.from_str(
+                    mesh=self, dim=dim, tag=tag, url_str=name
+                )
 
-        metadata._attach(self, dim, tag)
         return metadata
 
     @staticmethod
