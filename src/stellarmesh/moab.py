@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import warnings
 from functools import cached_property
-from typing import Literal, Optional, Sequence, Union
+from typing import Final, Literal, Optional, Sequence, Union
 
 import h5py
 import numpy as np
@@ -764,16 +764,15 @@ class DAGMCModel(MOABModel):
             moab_nodes = core.create_vertices(coords)
 
             # Create a mapping from Gmsh tag to MOAB handle
-            # Note: node_tags is int32 or int64, moab_nodes is uint64
             tag_map = dict(zip(node_tags, moab_nodes, strict=True))
 
             # 2. Add surface elements and boundary conditions
-            surfaces: dict[int, DAGMCSurface] = {}
+            surface_map: Final[dict[int, DAGMCSurface]] = {}
             surface_dimtags = gmsh.model.get_entities(2)
-            surface_tags = [s[1] for s in surface_dimtags]
+            surface_tags: Final[list[int]] = [s[1] for s in surface_dimtags]
             for i, surface_tag in enumerate(surface_tags):
                 surface_set = model.create_surface(surface_tag)
-                surfaces[surface_tag] = surface_set
+                surface_map[surface_tag] = surface_set
 
                 surface_groups = gmsh.model.get_physical_groups_for_entity(
                     2, surface_tag
@@ -803,6 +802,7 @@ class DAGMCModel(MOABModel):
                         "volumes. Creating a void volume for surface "
                         f"{surface_tag}."
                     )
+                    # TODO(akoen): GLOBAL_ID could conflict with real volumes
                     volume_set = model.create_volume(i)
                     volume_set.material = "void"
                     surface_set.forward_volume = volume_set
@@ -813,7 +813,8 @@ class DAGMCModel(MOABModel):
                 )
                 if len(element_types) != 1 or element_types[0] != 2:
                     raise RuntimeError(
-                        f"Non-triangular element in surface {surface_tag}: {element_types}"
+                        f"Non-triangular element in surface {surface_tag}: "
+                        "{element_types}"
                     )
 
                 moab_conn = np.array(
@@ -838,7 +839,7 @@ class DAGMCModel(MOABModel):
 
                 # Set curve senses
                 upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
-                curve_sense = tuple((surfaces[a], 1) for a in upward_adjacencies)
+                curve_sense = tuple((surface_map[a], 1) for a in upward_adjacencies)
                 # FIXME(akoen): This sets all curve senses to positive, which is
                 # incorrect, but possible non-fatal
                 curve_set.curve_sense = curve_sense
@@ -859,44 +860,23 @@ class DAGMCModel(MOABModel):
             # 4. Add volume sets and surface sense
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
-            volume_map = {}
 
+            volume_map: Final[dict[int, DAGMCVolume]] = {}
             for i, volume_tag in enumerate(volume_tags):
-                volume_set = model.create_volume(i)
+                volume_set = model.create_volume(volume_tag)
                 volume_map[volume_tag] = volume_set
 
-                vol_groups = gmsh.model.get_physical_groups_for_entity(3, volume_tag)
-                mat_groups = []
-                for pg in vol_groups:
-                    n = gmsh.model.get_physical_name(3, pg)
-                    if n.startswith("mat:"):
-                        mat_groups.append(pg)
+                mat_name = mesh.entity_metadata(3, 1).material
+                volume_set.material = mat_name
 
-                if (num_groups := len(mat_groups)) != 1:
-                    raise ValueError(
-                        f"Volume with tag {volume_tag} and global_id {i} "
-                        f"belongs to {num_groups} material physical groups, should be 1."
-                    )
-                mat_name = gmsh.model.get_physical_name(3, mat_groups[0])
-                volume_set.material = mat_name[4:]
-
-            dim_tags = gmsh.model.get_physical_groups(2)
-            for dim, tag in dim_tags:
-                name = gmsh.model.get_physical_name(dim, tag)
-                try:
-                    metadata = SurfaceMetadata.from_str(name)
-                except (ValueError, TypeError):
-                    continue
-
-                entities = gmsh.model.get_entities_for_physical_group(dim, tag)
-                for surface_tag in entities:
-                    if surface_set := surfaces.get(surface_tag):
-                        if metadata.forward_volume is not None:
-                            if vol := volume_map.get(metadata.forward_volume):
-                                surface_set.forward_volume = vol
-                        if metadata.reverse_volume is not None:
-                            if vol := volume_map.get(metadata.reverse_volume):
-                                surface_set.reverse_volume = vol
+            for surface_tag, surface in surface_map.items():
+                metadata = mesh.entity_metadata(2, surface_tag)
+                if (forward_vol_tag := metadata.forward_volume) is not None:
+                    assert (forward_vol := volume_map.get(forward_vol_tag)) is not None
+                    surface.forward_volume = forward_vol
+                if (reverse_vol_tag := metadata.reverse_volume) is not None:
+                    assert (reverse_vol := volume_map.get(reverse_vol_tag)) is not None
+                    surface.reverse_volume = reverse_vol
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()

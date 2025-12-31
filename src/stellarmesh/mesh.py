@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 import subprocess
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
-from typing import Optional, Union, get_type_hints
+from typing import Any, Literal, Optional, Union, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
 
 import meshio
@@ -211,66 +212,133 @@ class EntityMetadata:
 
     _mesh: Mesh
     _dim: int
-    tag: int
+    _tag: int
+
+    def _get_metadata_group(self, create_if_missing: bool = True) -> Optional[int]:
+        self._mesh._check_is_initialized()
+        physical_groups = gmsh.model.get_physical_groups_for_entity(
+            self._dim, self._tag
+        )
+        for pg in physical_groups:
+            entities = gmsh.model.get_entities_for_physical_group(self._dim, pg)
+            if len(entities) == 1 and entities[0] == self._tag:
+                return pg
+        if not create_if_missing:
+            raise RuntimeError(
+                f"Entity ({self._dim}, {self._tag}) has no metadata group"
+            )
+
+        pg = gmsh.model.add_physical_group(self._dim, [self._tag], self._tag)
+        return pg
+
+    def __getattr__(self, name):
+        # if name not in [
+        #     "forward_vol",
+        #     "material",
+        #     "reverse_vol",
+        # ]:
+        #     return super().__getattribute__(name)
+        if name.startswith("_"):
+            return None
+        pg = self._get_metadata_group()
+        type_hints = get_type_hints(self)
+        metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
+        url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+        data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+        return type_hints.get(name)(data.get(name))
 
     def __setattr__(self, name, value):
-        object.__setattr__(self, name, value)
-        if not name.startswith("_") and getattr(self, "_mesh", None):
-            self._mesh.write_metadata(self._dim, self.tag, self)
-
-    def to_str(self) -> str:
-        """Converts the dataclass instance to a url string."""
-        data = asdict(self)
-        public_data = {k: v for k, v in data.items() if not k.startswith("_")}
-        return urlencode(public_data)
-
-    @classmethod
-    def from_str(cls, mesh: Mesh, dim: int, tag: int, url_str: str):
-        """Create an EntityMetadata from an encoded string."""
-        data = {k: v[0] for k, v in parse_qs(url_str).items()}
-        # get_type_hints captures fields from User AND any subclass
-        type_hints = get_type_hints(cls)
-        init_fields = {f.name for f in fields(cls) if f.init}
-
-        # Validation logic
-        for key, expected_type in type_hints.items():
-            if key.startswith("_") or key not in init_fields:
-                continue
-            # Handle Optional types
-            is_optional = False
-            if (
-                hasattr(expected_type, "__origin__")
-                and expected_type.__origin__ is Union
-            ):
-                args = expected_type.__args__
-                if type(None) in args:
-                    is_optional = True
-                    # Assuming Optional[T] is Union[T, NoneType]
-                    # We strictly check against the non-None type if present, but for now
-                    # just skipping missing check is enough.
-
-            if key not in data:
-                if is_optional:
-                    continue
-                raise ValueError(f"Missing field: {key}")
-
-            # Simple type check (skip for Optional for simplicity or improve logic)
-            if data[key] is not None and not is_optional:
-                if not isinstance(data[key], expected_type):
-                    try:
-                        data[key] = expected_type(data[key])
-                    except Exception as e:
-                        raise TypeError(
-                            f"Field '{key}' expected {expected_type}, got {type(data[key])}"
-                        ) from e
-
-        data["_mesh"] = mesh
-        data["_dim"] = dim
-        data["tag"] = tag
-
-        return cls(
-            **{k: v for k, v in data.items() if k in init_fields},
+        # init_fields = {f.name for f in fields(self) if f.init}
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+            return
+        self._mesh._check_is_initialized()
+        metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
+        url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+        if url_str != "":
+            data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+        else:
+            data = {"tag": self._tag}
+        data[name] = value
+        gmsh.model.remove_physical_groups([(self._dim, metadata_group)])
+        new_url_str = urlencode(data)
+        gmsh.model.add_physical_group(
+            self._dim, [self._tag], metadata_group, new_url_str
         )
+        self._mesh._save_changes()
+
+    # def write_metadata(self, dim: int, tag: int, metadata: EntityMetadata):
+    #     metadata_str = metadata.to_str()
+    #     try:
+    #         metadata_group = self._get_metadata_group(dim, tag, create_if_missing=False)
+    #         gmsh.model.remove_physical_groups([(dim, metadata_group)])
+    #     except RuntimeError:
+    #         pass
+
+    #     metadata_group = self._get_metadata_group(dim, tag, create_if_missing=True)
+    #     gmsh.model.set_physical_name(dim, metadata_group, metadata_str)
+    #     self._save_changes()
+
+    # def to_str(self) -> str:
+    #     """Converts the dataclass instance to a url string."""
+    #     data = asdict(self)
+    #     public_data = {
+    #         k: v for k, v in data.items() if not k.startswith("_") and v is not None
+    #     }
+    #     return urlencode(public_data)
+
+    # def __init__(self, mesh: Mesh, dim: int, tag: int):
+    #     mesh._check_is_initialized()
+    #     self._mesh = mesh
+    #     self._dim = dim
+    #     self._tag = tag
+
+    #     pg = self._get_metadata_group(dim, tag)
+    #     url_str = gmsh.model.get_physical_name(dim, pg)
+
+    # if url_str is not "":
+    #     data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+    #     # get_type_hints captures fields from User AND any subclass
+    #     type_hints = get_type_hints(self)
+    #     init_fields = {f.name for f in fields(self) if f.init}
+
+    #     # Validation logic
+    #     for key, expected_type in type_hints.items():
+    #         if key.startswith("_") or key not in init_fields:
+    #             continue
+    #         # Handle Optional types
+    #         is_optional = False
+    #         if (
+    #             hasattr(expected_type, "__origin__")
+    #             and expected_type.__origin__ is Union
+    #         ):
+    #             args = expected_type.__args__
+    #             if type(None) in args:
+    #                 is_optional = True
+    #                 # Assuming Optional[T] is Union[T, NoneType]
+    #                 # We strictly check against the non-None type if present, but for now
+    #                 # just skipping missing check is enough.
+
+    #         if key not in data:
+    #             if is_optional:
+    #                 continue
+    #             raise ValueError(f"Missing field: {key}")
+
+    #         # Simple type check (skip for Optional for simplicity or improve logic)
+    #         if data[key] is not None and not is_optional:
+    #             if not isinstance(data[key], expected_type):
+    #                 try:
+    #                     data[key] = expected_type(data[key])
+    #                 except Exception as e:
+    #                     raise TypeError(
+    #                         f"Field '{key}' expected {expected_type}, got {type(data[key])}"
+    #                     ) from e
+
+    #     for k, v in data.items()
+
+    #     return cls(
+    #         **{k: v for k, v in data.items() if k in init_fields},
+    #     )
 
     ...
 
@@ -286,6 +354,8 @@ class SurfaceMetadata(EntityMetadata):
 @dataclass(kw_only=True)
 class VolumeMetadata(EntityMetadata):
     """Metadata for a Mesh elementary volume."""
+
+    material: Optional[str] = None
 
 
 class Mesh:
@@ -423,40 +493,22 @@ class Mesh:
                     dim, tag
                 )
                 gmsh.model.mesh.clear([(dim, tag)])
-                gmsh.model.mesh.add_nodes(dim, tag, node_tags, coords * factor)
+                gmsh.model.mesh.add_nodes(dim, tag, node_tags, coords * factor)  # type: ignore
                 gmsh.model.mesh.add_elements(
                     dim, tag, element_types, element_tags, node_tags2
                 )
             mesh_scaled._save_changes()
         return mesh_scaled
 
-    def _get_metadata_group(
-        self, dim: int, tag: int, create: bool = True
-    ) -> Optional[int]:
-        physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
-        for pg in physical_groups:
-            entities = gmsh.model.get_entities_for_physical_group(dim, pg)
-            if len(entities) == 1 and entities[0] == tag:
-                return pg
-        if not create:
-            raise RuntimeError(f"Entity ({dim}, {tag}) has no metadata group")
+    @overload
+    def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...
 
-        pg = gmsh.model.add_physical_group(dim, [tag], tag)
-        return pg
+    @overload
+    def entity_metadata(self, dim: Literal[3], tag: int) -> VolumeMetadata: ...
 
-    def write_metadata(self, dim: int, tag: int, metadata: EntityMetadata):
-        metadata_str = metadata.to_str()
-        try:
-            metadata_group = self._get_metadata_group(dim, tag, create=False)
-            gmsh.model.remove_physical_groups([(dim, metadata_group)])
-        except RuntimeError:
-            pass
-
-        metadata_group = self._get_metadata_group(dim, tag, create=True)
-        gmsh.model.set_physical_name(dim, metadata_group, metadata_str)
-        self._save_changes()
-
-    def entity_metadata(self, dim: int, tag: int) -> EntityMetadata:
+    def entity_metadata(
+        self, dim: Literal[1] | Literal[2] | Literal[3], tag: int
+    ) -> EntityMetadata:
         """Get metadata for an entity.
 
         Args:
@@ -466,34 +518,10 @@ class Mesh:
         Returns:
             Entity metadata.
         """
-        self._check_is_initialized()
-        # physical_groups = gmsh.model.get_physical_groups_for_entity(dim, tag)
-
-        pg = self._get_metadata_group(dim, tag)
-        name = gmsh.model.get_physical_name(dim, pg)
-
-        if name == "":
-            if dim == 2:
-                metadata = SurfaceMetadata(_mesh=self, _dim=dim, tag=tag)
-            elif dim == 3:
-                metadata = VolumeMetadata(_mesh=self, _dim=dim, tag=tag)
-            else:
-                metadata = EntityMetadata(_mesh=self, _dim=dim, tag=tag)
-        else:
-            if dim == 2:
-                metadata = SurfaceMetadata.from_str(
-                    mesh=self, dim=dim, tag=tag, url_str=name
-                )
-            elif dim == 3:
-                metadata = VolumeMetadata.from_str(
-                    mesh=self, dim=dim, tag=tag, url_str=name
-                )
-            else:
-                metadata = EntityMetadata.from_str(
-                    mesh=self, dim=dim, tag=tag, url_str=name
-                )
-
-        return metadata
+        if dim == 2:
+            return SurfaceMetadata(_mesh=self, _dim=dim, _tag=tag)
+        if dim == 3:
+            return VolumeMetadata(_mesh=self, _dim=dim, _tag=tag)
 
     @staticmethod
     def _check_is_initialized():
@@ -644,37 +672,32 @@ class SurfaceMesh(Mesh):
             gmsh.model.add("stellarmesh_model")
 
             # Solids
-            material_solid_map = defaultdict(list)
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = cls._import_occ(s)
+                gmsh.model.occ.synchronize()
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
                 solid_tag = dim_tags[0][1]
-                material_solid_map[m].append(solid_tag)
+                mesh.entity_metadata(3, solid_tag).material = m
 
             # Faces
-            surface_bc_map = defaultdict(list)
             for f, bc in zip(
                 geometry.faces, geometry.face_boundary_conditions, strict=True
             ):
                 dim_tags = cls._import_occ(f)
+                gmsh.model.occ.synchronize()
                 if dim_tags[0][0] != 2:
                     raise TypeError("Importing non-surface geometry.")
 
                 surface_tag = dim_tags[0][1]
-                surface_bc_map[bc].append(surface_tag)
+                mesh.entity_metadata(2, surface_tag).boundary_condition = bc
 
-            gmsh.model.occ.synchronize()
+            # gmsh.model.occ.synchronize()
 
             assert len(gmsh.model.get_entities(3)) == len(geometry.solids)
 
-            for material, solid_tags in material_solid_map.items():
-                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
-            for bc, surface_tags in surface_bc_map.items():
-                gmsh.model.add_physical_group(2, surface_tags, name=f"boundary:{bc}")
-
-            gmsh.model.occ.synchronize()
+            # gmsh.model.occ.synchronize()
 
             known_surfaces = set()
             volume_dimtags = gmsh.model.get_entities(3)
