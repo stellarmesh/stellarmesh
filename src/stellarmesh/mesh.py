@@ -241,6 +241,8 @@ class EntityMetadata:
         metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
         url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
         data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+        if name not in data:
+            return None
         ret = type_hints.get(name)(data.get(name))
         logger.debug(
             f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
