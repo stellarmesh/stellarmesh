@@ -774,24 +774,10 @@ class DAGMCModel(MOABModel):
                 surface_set = model.create_surface(surface_tag)
                 surface_map[surface_tag] = surface_set
 
-                surface_groups = gmsh.model.get_physical_groups_for_entity(
-                    2, surface_tag
-                )
-                boundary_groups = []
-                for pg in surface_groups:
-                    n = gmsh.model.get_physical_name(2, pg)
-                    if n.startswith("boundary:"):
-                        boundary_groups.append(pg)
-
-                if (num_groups := len(boundary_groups)) not in [0, 1]:
-                    raise ValueError(
-                        f"Surface with tag {surface_tag} and global_id {i}"
-                        f"belongs to {num_groups} boundary physical groups, should be 0 "
-                        f"or 1."
-                    )
-                elif num_groups == 1:
-                    boundary_name = gmsh.model.get_physical_name(2, boundary_groups[0])
-                    surface_set.boundary = boundary_name[9:]
+                if (
+                    bc := mesh.entity_metadata(2, surface_tag).boundary_condition
+                ) is not None:
+                    surface_set.boundary = bc
 
                 volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[
                     0
@@ -802,8 +788,9 @@ class DAGMCModel(MOABModel):
                         "volumes. Creating a void volume for surface "
                         f"{surface_tag}."
                     )
-                    # TODO(akoen): GLOBAL_ID could conflict with real volumes
-                    volume_set = model.create_volume(i)
+                    existing_vol_tags = [v[1] for v in gmsh.model.get_entities(3)]
+                    new_id = max(existing_vol_tags, default=0) + 1
+                    volume_set = model.create_volume(new_id)
                     volume_set.material = "void"
                     surface_set.forward_volume = volume_set
 
@@ -866,7 +853,7 @@ class DAGMCModel(MOABModel):
                 volume_set = model.create_volume(volume_tag)
                 volume_map[volume_tag] = volume_set
 
-                mat_name = mesh.entity_metadata(3, 1).material
+                mat_name = mesh.entity_metadata(3, volume_tag).material
                 volume_set.material = mat_name
 
             for surface_tag, surface in surface_map.items():
