@@ -761,6 +761,10 @@ class DAGMCModel(MOABModel):
 
             # 1. Add nodes
             node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            if np.isnan(coords).any():
+                raise ValueError("Mesh coordinates contain NaNs.")
+            if np.isinf(coords).any():
+                raise ValueError("Mesh coordinates contain infinite values.")
             moab_nodes = core.create_vertices(coords)
 
             # Create a mapping from Gmsh tag to MOAB handle
@@ -771,6 +775,13 @@ class DAGMCModel(MOABModel):
             surface_dimtags = gmsh.model.get_entities(2)
             surface_tags: Final[list[int]] = [s[1] for s in surface_dimtags]
             for i, surface_tag in enumerate(surface_tags):
+                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
+                    2, surface_tag
+                )
+
+                if len(node_tags_list[0]) == 0:
+                    raise RuntimeError(f"Surface {surface_tag} has no elements")
+
                 surface_set = model.create_surface(surface_tag)
                 surface_map[surface_tag] = surface_set
 
@@ -795,9 +806,8 @@ class DAGMCModel(MOABModel):
                     surface_set.forward_volume = volume_set
 
                 # Add elements to MOAB
-                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-                    2, surface_tag
-                )
+
+
                 if len(element_types) != 1 or element_types[0] != 2:
                     raise RuntimeError(
                         f"Non-triangular element in surface {surface_tag}: "
@@ -807,6 +817,17 @@ class DAGMCModel(MOABModel):
                 moab_conn = np.array(
                     [tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
                 )
+
+                reshaped_conn = moab_conn.reshape(-1, 3)
+                if (
+                    np.any(reshaped_conn[:, 0] == reshaped_conn[:, 1])
+                    or np.any(reshaped_conn[:, 1] == reshaped_conn[:, 2])
+                    or np.any(reshaped_conn[:, 2] == reshaped_conn[:, 0])
+                ):
+                    raise RuntimeError(
+                        f"Surface {surface_tag} contains degenerate triangles (duplicate vertices). "
+                        "This may cause OBB tree construction to fail."
+                    )
 
                 triangles = core.create_elements(
                     pymoab.types.MBTRI, moab_conn.reshape(-1, 3)
@@ -824,25 +845,32 @@ class DAGMCModel(MOABModel):
                     1, curve_tag
                 )
 
+
+                if len(node_tags_list[0]) != 0:
+                    logger.warning(f"Curve {curve_tag} has no elements. Skipping.")
+                    continue
+                    # raise RuntimeError(f"Curve {curve_tag} has no elements.")
+
                 # Set curve senses
                 upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
                 curve_sense = tuple((surface_map[a], 1) for a in upward_adjacencies)
                 # FIXME(akoen): This sets all curve senses to positive, which is
                 # incorrect, but possible non-fatal
-                curve_set.curve_sense = curve_sense
+                # curve_set.curve_sense = curve_sense
 
-                if len(node_tags_list) != 0:
-                    # TODO (this may only have sequential edges)
-                    moab_conn = np.array(
-                        [tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
-                    )
+                # TEMP
+                for a in upward_adjacencies:
+                    core.add_parent_child(surface_map[a].handle, curve_set.handle)
 
-                    edges = core.create_elements(
-                        pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
-                    )
-                    core.add_entities(curve_set.handle, edges)
-                else:
-                    logger.warning(f"Curve {curve_tag} has no elements.")
+                # TODO (this may only have sequential edges)
+                moab_conn = np.array(
+                    [tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
+                )
+
+                edges = core.create_elements(
+                    pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
+                )
+                core.add_entities(curve_set.handle, edges)
 
             # 4. Add volume sets and surface sense
             volume_dimtags = gmsh.model.get_entities(3)
@@ -865,6 +893,24 @@ class DAGMCModel(MOABModel):
                     assert (reverse_vol := volume_map.get(reverse_vol_tag)) is not None
                     surface.reverse_volume = reverse_vol
 
+            # 5. Delete empty volumes
+            for volume in volume_map.values():
+                if not core.get_child_meshsets(volume.handle):
+                    logger.warning(
+                        f"Volume {volume.global_id} has no assigned surfaces. "
+                        "Removing from MOAB model."
+                    )
+                    core.delete_entity(volume.handle)
+
+            for surface in surface_map.values():
+                if not core.get_child_meshsets(surface.handle):
+                    ...
+                    # logger.warning(
+                    #     f"Suface {surface.global_id} has no assigned edges. "
+                    #     "Removing from MOAB model."
+                    # )
+                    # core.delete_entity(surface.handle)
+
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
             # TODO(akoen): faceting tol set to a random value
@@ -873,6 +919,8 @@ class DAGMCModel(MOABModel):
             # significance is not clear
             core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
             core.add_entities(file_set, all_entities)
+
+            # core.tag_set_data(model.faceting_tol_tag, model.root_set)
 
             return model
 

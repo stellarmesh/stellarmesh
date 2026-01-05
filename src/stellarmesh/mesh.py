@@ -241,12 +241,18 @@ class EntityMetadata:
         metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
         url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
         data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+        # for d in data:
+        #     if d not in type_hints:
+        #         # logger.warning(f"Key {d} is not a property of {self.__class__.__name__}")
+        #         ...
         if name not in data:
             return None
+        elif data.get(name) == "None":
+            return None
         ret = type_hints.get(name)(data.get(name))
-        logger.debug(
-            f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
-        )
+        # logger.debug(
+        #     f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
+        # )
         return ret
 
     def __setattr__(self, name, value):
