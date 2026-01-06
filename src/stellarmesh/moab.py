@@ -202,11 +202,14 @@ class DAGMCCurve(DAGMCEntitySet):
 
         return list(zip(surfaces, senses, strict=True))
 
-    # NOTE: Pymoab has a bug and fails to write variable length tags, so we must write 
+    # NOTE: Pymoab has a bug and fails to write variable length tags, so we must write
     # the tags manually
     @curve_sense.setter
     def curve_sense(
-        self, curve_senses: Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
+        self,
+        curve_senses: Sequence[
+            tuple[DAGMCSurface, Literal[-1] | Literal[0] | Literal[1]]
+        ],
     ):
         ents_data = np.array(
             [curve_sense[0].handle for curve_sense in curve_senses], dtype=np.uint64
@@ -440,6 +443,15 @@ class MOABModel:
         """Global ID tag."""
         # Default tag, does not need to be created
         return self._core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
+        #   rval = mdbImpl->tag_get_handle(GLOBAL_ID_TAG_NAME, 1, moab::MB_TYPE_INTEGER,
+        #                                  id_tag, moab::MB_TAG_DENSE | moab::MB_TAG_ANY, &zero);
+        # return self._core.tag_get_handle(
+        #     pymoab.types.GLOBAL_ID_TAG_NAME,
+        #     1,
+        #     pymoab.types.MB_TYPE_INTEGER,
+        #     pymoab.types.MB_TAG_DENSE,
+        #     create_if_missing=True,
+        # )
 
     @cached_property
     def geom_dimension_tag(self) -> pymoab.tag.Tag:
@@ -560,7 +572,9 @@ class DAGMCModel(MOABModel):
 
     def __init__(self, core_or_file: Union[PathLike, pymoab.core.Core]):
         super().__init__(core_or_file)
-        self._deferred_curve_senses: dict[DAGMCCurve, Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]] = {}
+        self._deferred_curve_senses: dict[
+            DAGMCCurve, Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
+        ] = {}
 
     def write(self, filename: PathLike):
         """Write DAGMC model to .h5m, .vtk, or other file.
@@ -577,7 +591,8 @@ class DAGMCModel(MOABModel):
         """Write deferred tags to HDF5 file."""
         with h5py.File(filename, "r+") as f:
             curves = sorted(self._deferred_curve_senses.keys(), key = lambda c: c.global_id)
-            id_list = [c.global_id for c in curves]
+            # id_list = [c.global_id for c in curves]
+            # id
 
             # GEOM_SENSE_N_ENTS (handles)
             ents_values = []
@@ -587,15 +602,29 @@ class DAGMCModel(MOABModel):
             senses_values = []
             senses_indices = [1]
 
-            for curve in curves:
+            global_id_handle_map: dict[int, int] = {}
+            handles = f["tstt/tags/GLOBAL_ID_MAP/id_list"][:]
+            global_ids = f["tstt/tags/GLOBAL_ID_MAP/values"][:]
+
+            for h, g in zip(handles, global_ids, strict=True):
+                global_id_handle_map[g] = h
+
+
+            id_list = [global_id_handle_map[c.global_id] for c in curves]
+            
+            for i, curve in enumerate(curves):
                 # ents, senses = self._deferred_curve_senses[h]
                 curve_senses = self._deferred_curve_senses[curve]
 
                 ents_data = np.array(
-                        [curve_sense[0].global_id for curve_sense in curve_senses], dtype=np.uint64
+                        [global_id_handle_map[curve_sense[0].global_id] for curve_sense in curve_senses], dtype=np.uint64
                     )
+                # ents_data = np.array(
+                #     [curve_sense[0].handle   for curve_sense in curve_senses],
+                #     dtype=np.uint64,
+                # )
                 sense_data = np.array(
-                        [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
+                    [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
                 )
 
                 ents_values.extend(ents_data)
@@ -776,14 +805,17 @@ class DAGMCModel(MOABModel):
             # gmsh.model.mesh.removeDuplicateNodes()
 
             # 1. Add nodes
-            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            # node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            node_tags, coords, _ = gmsh.model.mesh.get_nodes(2, includeBoundary=True)
             if np.isnan(coords).any():
                 raise ValueError("Mesh coordinates contain NaNs.")
             if np.isinf(coords).any():
                 raise ValueError("Mesh coordinates contain infinite values.")
 
-            # for c in coords.reshape(-1, 3):
-            #     element_tag = gmsh.model.mesh.get_element_by_coordinates(*c, 2)
+            for c in coords.reshape(-1, 3):
+                element_tag = gmsh.model.mesh.get_element_by_coordinates(
+                    *c, 2, strict=True
+                )
 
             moab_nodes = core.create_vertices(coords)
 
@@ -859,6 +891,7 @@ class DAGMCModel(MOABModel):
             curve_map: Final[dict[int, DAGMCCurve]] = {}
             curve_dimtags = gmsh.model.get_entities(1)
             curve_tags = [c[1] for c in curve_dimtags]
+
             logger.debug(f"Mesh has {len(curve_tags)} curves")
             for i, curve_tag in enumerate(curve_tags):
                 # Add elements to MOAB
@@ -874,11 +907,10 @@ class DAGMCModel(MOABModel):
                 curve_set = model.create_curve(curve_tag)
                 curve_map[curve_tag] = curve_set
 
+
                 # curve_set = model.create_curve()
                 # global_id = curve_set.global_id
                 # curve_map[curve_tag] = curve_set
-
-
 
                 # Set curve senses
                 # TODO(akoen): Have not confirmed that boundary signs are correct
@@ -892,7 +924,9 @@ class DAGMCModel(MOABModel):
                     )
                     for _, b in boundary:
                         if np.abs(b) == curve_tag:
-                            curve_sense[i] = (surface_map[a], np.sign(b))
+                            # curve_sense[i] = (surface_map[a], np.sign(b))
+                            # Set curve sense to unknown (-1)
+                            curve_sense[i] = (surface_map[a], -1)
 
                 curve_set.curve_sense = curve_sense
 
@@ -949,6 +983,8 @@ class DAGMCModel(MOABModel):
                     assert (reverse_vol := volume_map.get(reverse_vol_tag)) is not None
                     surface.reverse_volume = reverse_vol
 
+            core
+
             # 5. Delete empty volumes
             for volume in volume_map.values():
                 if not core.get_child_meshsets(volume.handle):
@@ -971,13 +1007,28 @@ class DAGMCModel(MOABModel):
                     # )
                     # core.delete_entity(surface.handle)
 
+            # Map file handles
+            global_id_map_tag = core.tag_get_handle(
+                "GLOBAL_ID_MAP",
+                1,
+                pymoab.types.MB_TYPE_INTEGER,
+                pymoab.types.MB_TAG_SPARSE,
+                create_if_missing=True,
+            )
+
+            entities = model.curves + model.surfaces
+            for e in entities:
+                core.tag_set_data(global_id_map_tag, e.handle, e.global_id)
+
+
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
             # TODO(akoen): faceting tol set to a random value
             # https://github.com/Thea-Energy/neutronics-cad/issues/5
             # faceting_tol required to be set for make_watertight, although its
             # significance is not clear
-            core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
+            # core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
+            core.tag_set_data(model.faceting_tol_tag, file_set, 0.1)
             core.add_entities(file_set, all_entities)
 
             # core.tag_set_data(model.faceting_tol_tag, model.root_set)
@@ -1003,6 +1054,15 @@ class DAGMCModel(MOABModel):
             0, pymoab.types.MBENTITYSET, [self.geom_dimension_tag], [dim]
         )
 
+    @property
+    def curves(self) -> list[DAGMCCurve]:
+        """Get curves in this model.
+
+        Returns:
+            Curve.
+        """
+        curve_handles = self._get_entities_of_geom_dimension(1)
+        return [DAGMCCurve(self, h) for h in curve_handles]
     @property
     def surfaces(self) -> list[DAGMCSurface]:
         """Get surfaces in this model.
