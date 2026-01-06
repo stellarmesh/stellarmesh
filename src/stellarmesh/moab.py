@@ -202,6 +202,8 @@ class DAGMCCurve(DAGMCEntitySet):
 
         return list(zip(surfaces, senses, strict=True))
 
+    # NOTE: Pymoab has a bug and fails to write variable length tags, so we must write 
+    # the tags manually
     @curve_sense.setter
     def curve_sense(
         self, curve_senses: Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
@@ -216,7 +218,7 @@ class DAGMCCurve(DAGMCEntitySet):
         # Trigger creation of tags
         _ = self.model.curve_sense_tags
 
-        self.model._deferred_curve_senses[self.handle] = (ents_data, sense_data)
+        self.model._deferred_curve_senses[self] = curve_senses
 
         parents = self.model._core.get_parent_meshsets(self.handle)
         for parent in parents:
@@ -558,7 +560,7 @@ class DAGMCModel(MOABModel):
 
     def __init__(self, core_or_file: Union[PathLike, pymoab.core.Core]):
         super().__init__(core_or_file)
-        self._deferred_curve_senses: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self._deferred_curve_senses: dict[DAGMCCurve, Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]] = {}
 
     def write(self, filename: PathLike):
         """Write DAGMC model to .h5m, .vtk, or other file.
@@ -574,29 +576,38 @@ class DAGMCModel(MOABModel):
     def _write_deferred_tags(self, filename: PathLike):
         """Write deferred tags to HDF5 file."""
         with h5py.File(filename, "r+") as f:
-            handles = sorted(self._deferred_curve_senses.keys())
+            curves = sorted(self._deferred_curve_senses.keys(), key = lambda c: c.global_id)
+            id_list = [c.global_id for c in curves]
 
             # GEOM_SENSE_N_ENTS (handles)
             ents_values = []
-            ents_indices = [0]
+            ents_indices = [1]
 
             # GEOM_SENSE_N_SENSES (integers)
             senses_values = []
-            senses_indices = [0]
+            senses_indices = [1]
 
-            for h in handles:
-                ents, senses = self._deferred_curve_senses[h]
+            for curve in curves:
+                # ents, senses = self._deferred_curve_senses[h]
+                curve_senses = self._deferred_curve_senses[curve]
 
-                ents_values.extend(ents)
-                ents_indices.append(ents_indices[-1] + len(ents))
+                ents_data = np.array(
+                        [curve_sense[0].global_id for curve_sense in curve_senses], dtype=np.uint64
+                    )
+                sense_data = np.array(
+                        [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
+                )
 
-                senses_values.extend(senses)
-                senses_indices.append(senses_indices[-1] + len(senses))
+                ents_values.extend(ents_data)
+                ents_indices.append(ents_indices[-1] + len(ents_data))
+
+                senses_values.extend(sense_data)
+                senses_indices.append(senses_indices[-1] + len(sense_data))
 
             self._write_single_tag(
                 f,
                 "GEOM_SENSE_N_ENTS",
-                handles,
+                id_list,
                 ents_values,
                 ents_indices,
                 np.uint64,
@@ -604,13 +615,13 @@ class DAGMCModel(MOABModel):
             self._write_single_tag(
                 f,
                 "GEOM_SENSE_N_SENSES",
-                handles,
+                id_list,
                 senses_values,
                 senses_indices,
                 np.int32,
             )
 
-    def _write_single_tag(self, f, tag_name, handles, values, indices, dtype):
+    def _write_single_tag(self, f, tag_name, id_list, values, var_indices, dtype):
         if "tstt/tags" not in f:
             raise RuntimeError("No tstt/tags group")
 
@@ -626,9 +637,9 @@ class DAGMCModel(MOABModel):
             else tag_grp
         )
         for name, data, dt in (
-            ("id_list", handles, np.uint64),
+            ("id_list", id_list, np.uint64),
             ("values", values, dtype),
-            ("indices", indices, np.uint64),
+            ("var_indices", var_indices, np.uint64),
         ):
             if name in target:
                 del target[name]
@@ -850,9 +861,6 @@ class DAGMCModel(MOABModel):
             curve_tags = [c[1] for c in curve_dimtags]
             logger.debug(f"Mesh has {len(curve_tags)} curves")
             for i, curve_tag in enumerate(curve_tags):
-                curve_set = model.create_curve(curve_tag)
-                curve_map[curve_tag] = curve_set
-
                 # Add elements to MOAB
                 element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
                     1, curve_tag
@@ -862,6 +870,11 @@ class DAGMCModel(MOABModel):
                     logger.warning(f"Curve {curve_tag} has no elements. Skipping.")
                     continue
                     # raise RuntimeError(f"Curve {curve_tag} has no elements.")
+
+                curve_set = model.create_curve(curve_tag)
+                curve_map[curve_tag] = curve_set
+
+
 
                 # Set curve senses
                 # TODO(akoen): Have not confirmed that boundary signs are correct
