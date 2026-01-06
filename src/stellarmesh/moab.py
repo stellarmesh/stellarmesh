@@ -609,7 +609,7 @@ class DAGMCModel(MOABModel):
                 "GEOM_SENSE_N_ENTS",
                 id_list,
                 ents_values,
-                ents_indices,
+                ents_indices[:-1],
                 np.uint64,
             )
             self._write_single_tag(
@@ -617,7 +617,7 @@ class DAGMCModel(MOABModel):
                 "GEOM_SENSE_N_SENSES",
                 id_list,
                 senses_values,
-                senses_indices,
+                senses_indices[:-1],
                 np.int32,
             )
 
@@ -873,6 +873,10 @@ class DAGMCModel(MOABModel):
 
                 curve_set = model.create_curve(curve_tag)
                 curve_map[curve_tag] = curve_set
+
+                # curve_set = model.create_curve()
+                # global_id = curve_set.global_id
+                # curve_map[curve_tag] = curve_set
 
 
 
