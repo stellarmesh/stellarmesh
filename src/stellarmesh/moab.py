@@ -590,7 +590,9 @@ class DAGMCModel(MOABModel):
     def _write_deferred_tags(self, filename: PathLike):
         """Write deferred tags to HDF5 file."""
         with h5py.File(filename, "r+") as f:
-            curves = sorted(self._deferred_curve_senses.keys(), key = lambda c: c.global_id)
+            curves = sorted(
+                self._deferred_curve_senses.keys(), key=lambda c: c.global_id
+            )
             # id_list = [c.global_id for c in curves]
             # id
 
@@ -609,16 +611,19 @@ class DAGMCModel(MOABModel):
             for h, g in zip(handles, global_ids, strict=True):
                 global_id_handle_map[g] = h
 
-
             id_list = [global_id_handle_map[c.global_id] for c in curves]
-            
+
             for i, curve in enumerate(curves):
                 # ents, senses = self._deferred_curve_senses[h]
                 curve_senses = self._deferred_curve_senses[curve]
 
                 ents_data = np.array(
-                        [global_id_handle_map[curve_sense[0].global_id] for curve_sense in curve_senses], dtype=np.uint64
-                    )
+                    [
+                        global_id_handle_map[curve_sense[0].global_id]
+                        for curve_sense in curve_senses
+                    ],
+                    dtype=np.uint64,
+                )
                 # ents_data = np.array(
                 #     [curve_sense[0].handle   for curve_sense in curve_senses],
                 #     dtype=np.uint64,
@@ -802,25 +807,24 @@ class DAGMCModel(MOABModel):
             if gmsh.model.mesh.get_elements(3)[1]:
                 logger.warning("Discarding volume elements from mesh.")
 
-            # gmsh.model.mesh.removeDuplicateNodes()
+            gmsh.model.mesh.removeDuplicateNodes()
 
             # 1. Add nodes
-            # node_tags, coords, _ = gmsh.model.mesh.get_nodes()
-            node_tags, coords, _ = gmsh.model.mesh.get_nodes(2, includeBoundary=True)
+            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            assert len(node_tags) == len(np.unique(node_tags))
+            # print(len(coords.reshape(-1, 3)))
+            # print(len(np.unique(node_tags.reshape(-1, 3), axis=0)))
             if np.isnan(coords).any():
                 raise ValueError("Mesh coordinates contain NaNs.")
             if np.isinf(coords).any():
                 raise ValueError("Mesh coordinates contain infinite values.")
 
-            for c in coords.reshape(-1, 3):
-                element_tag = gmsh.model.mesh.get_element_by_coordinates(
-                    *c, 2, strict=True
-                )
-
-            moab_nodes = core.create_vertices(coords)
-
-            # Create a mapping from Gmsh tag to MOAB handle
-            node_tag_map: dict[int, int] = dict(zip(node_tags, moab_nodes, strict=True))
+            moab_vertices = core.create_vertices(coords)
+            core.tag_set_data(model.id_tag, moab_vertices, node_tags.astype(np.int32))
+            debug_unused_nodes = np.array(moab_vertices)
+            node_tag_map: dict[int, int] = dict(
+                zip(node_tags, moab_vertices, strict=True)
+            )
 
             # 2. Add surface elements and boundary conditions
             surface_map: Final[dict[int, DAGMCSurface]] = {}
@@ -869,6 +873,8 @@ class DAGMCModel(MOABModel):
                     [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
                 )
 
+                debug_unused_nodes = np.setdiff1d(debug_unused_nodes, moab_conn)
+
                 # reshaped_conn = moab_conn.reshape(-1, 3)
                 # if (
                 #     np.any(reshaped_conn[:, 0] == reshaped_conn[:, 1])
@@ -880,87 +886,122 @@ class DAGMCModel(MOABModel):
                 #         "This may cause OBB tree construction to fail."
                 #     )
 
-                triangles = core.create_elements(
-                    pymoab.types.MBTRI, moab_conn.reshape(-1, 3)
-                )
+                # ---------------------------------------------------------
+                # ROBUST FIX: Manual Element Loop
+                # ---------------------------------------------------------
 
-                core.add_entities(surface_set.handle, triangles)
-                core.add_entities(surface_set.handle, np.unique(moab_conn))
-
-            # 3. Add curves
-            curve_map: Final[dict[int, DAGMCCurve]] = {}
-            curve_dimtags = gmsh.model.get_entities(1)
-            curve_tags = [c[1] for c in curve_dimtags]
-
-            logger.debug(f"Mesh has {len(curve_tags)} curves")
-            for i, curve_tag in enumerate(curve_tags):
-                # Add elements to MOAB
-                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-                    1, curve_tag
-                )
-
-                if len(node_tags_list[0]) == 0:
-                    logger.warning(f"Curve {curve_tag} has no elements. Skipping.")
-                    continue
-                    # raise RuntimeError(f"Curve {curve_tag} has no elements.")
-
-                curve_set = model.create_curve(curve_tag)
-                curve_map[curve_tag] = curve_set
-
-
-                # curve_set = model.create_curve()
-                # global_id = curve_set.global_id
-                # curve_map[curve_tag] = curve_set
-
-                # Set curve senses
-                # TODO(akoen): Have not confirmed that boundary signs are correct
-                upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
-                curve_sense: list[tuple[DAGMCSurface, Literal[-1] | Literal[1]]] = [
-                    None
-                ] * len(upward_adjacencies)
-                for i, a in enumerate(upward_adjacencies):
-                    boundary = gmsh.model.get_boundary(
-                        [(2, a)], combined=True, oriented=True
-                    )
-                    for _, b in boundary:
-                        if np.abs(b) == curve_tag:
-                            # curve_sense[i] = (surface_map[a], np.sign(b))
-                            # Set curve sense to unknown (-1)
-                            curve_sense[i] = (surface_map[a], -1)
-
-                curve_set.curve_sense = curve_sense
-
-                moab_conn = np.array(
+                # 1. Create the flat array and reshape (Standard setup)
+                moab_conn_flat = np.array(
                     [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
                 )
+                moab_conn_2d = moab_conn_flat.reshape(-1, 3)
 
-                edges = core.create_elements(
-                    pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
-                )
-                core.add_entities(curve_set.handle, edges)
-                core.add_entities(curve_set.handle, np.unique(moab_conn))
+                # 2. Pre-allocate array for the new handles
+                num_elements = len(moab_conn_2d)
+                new_handles = np.zeros(num_elements, dtype=np.uint64)
 
-            # 3. Add points
-            # TODO(akoen): Untested since blanket model has only periodic curves
-            point_dimtags = gmsh.model.get_entities(0)
-            point_tags = [c[1] for c in point_dimtags]
-            logger.debug(f"Mesh has {len(point_tags)} points")
-            for i, point_tag in enumerate(point_tags):
-                point_set = model.create_point(point_tag)
+                # 3. Loop and create elements individually
+                #    This bypasses the broken bulk wrapper by using the method
+                #    we KNOW works (create_element).
+                try:
+                    for i, conn in enumerate(moab_conn_2d):
+                        new_handles[i] = core.create_element(pymoab.types.MBTRI, conn)
+                        adj = core.get_adjacencies(Range(new_handles[i]), 0, False)
+                        if len(adj) != 3:
+                            logger.error(
+                                "Triangle {i} has no vertex adjacencies.", exc_info=True
+                            )
 
-                # # Add elements to MOAB
-                # element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-                #     0, point_tag
-                # )
-                node_tags, _, _ = gmsh.model.mesh.get_nodes(0, point_tag)
-                assert (len(node_tags)) == 1
+                        adj = core.get_adjacencies(Range(new_handles[i]), 1, True)
+                        if len(adj)!=3:
+                            logger.error("Triangle {i} has no edge adjacencies.", exc_info=True)
+                except Exception as e:
+                    logger.error(f"Failed at element {i}: {e}")
+                    raise
 
-                # Set point senses
-                upward_adjacencies, _ = gmsh.model.get_adjacencies(0, point_tag)
-                for a in upward_adjacencies:
-                    core.add_parent_child(curve_map[a].handle, point_set.handle)
+                # 4. Convert NumPy array of handles to a MOAB Range
+                triangles = Range(new_handles)
 
-                core.add_entities(point_set.handle, node_tag_map[node_tags[0]])
+                # 5. Add to the Surface Set
+                core.add_entities(surface_set.handle, triangles)
+                core.add_entities(surface_set.handle, np.unique(moab_conn_flat))
+                ...
+
+            assert len(debug_unused_nodes) == 0
+
+            # # 3. Add curves
+            # curve_map: Final[dict[int, DAGMCCurve]] = {}
+            # curve_dimtags = gmsh.model.get_entities(1)
+            # curve_tags = [c[1] for c in curve_dimtags]
+
+            # logger.debug(f"Mesh has {len(curve_tags)} curves")
+            # for i, curve_tag in enumerate(curve_tags):
+            #     # Add elements to MOAB
+            #     element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
+            #         1, curve_tag
+            #     )
+
+            #     if len(node_tags_list[0]) == 0:
+            #         logger.warning(f"Curve {curve_tag} has no elements. Skipping.")
+            #         continue
+            #         # raise RuntimeError(f"Curve {curve_tag} has no elements.")
+
+            #     curve_set = model.create_curve(curve_tag)
+            #     curve_map[curve_tag] = curve_set
+
+            #     # curve_set = model.create_curve()
+            #     # global_id = curve_set.global_id
+            #     # curve_map[curve_tag] = curve_set
+
+            #     # Set curve senses
+            #     # TODO(akoen): Have not confirmed that boundary signs are correct
+            #     upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
+            #     curve_sense: list[tuple[DAGMCSurface, Literal[-1] | Literal[1]]] = [
+            #         None
+            #     ] * len(upward_adjacencies)
+            #     for i, a in enumerate(upward_adjacencies):
+            #         boundary = gmsh.model.get_boundary(
+            #             [(2, a)], combined=True, oriented=True
+            #         )
+            #         for _, b in boundary:
+            #             if np.abs(b) == curve_tag:
+            #                 # curve_sense[i] = (surface_map[a], np.sign(b))
+            #                 # Set curve sense to unknown (-1)
+            #                 curve_sense[i] = (surface_map[a], -1)
+
+            #     curve_set.curve_sense = curve_sense
+
+            #     moab_conn = np.array(
+            #         [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
+            #     )
+
+            #     edges = core.create_elements(
+            #         pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
+            #     )
+            #     core.add_entities(curve_set.handle, edges)
+            #     core.add_entities(curve_set.handle, np.unique(moab_conn))
+
+            # # 3. Add points
+            # # TODO(akoen): Untested since blanket model has only periodic curves
+            # point_dimtags = gmsh.model.get_entities(0)
+            # point_tags = [c[1] for c in point_dimtags]
+            # logger.debug(f"Mesh has {len(point_tags)} points")
+            # for i, point_tag in enumerate(point_tags):
+            #     point_set = model.create_point(point_tag)
+
+            #     # # Add elements to MOAB
+            #     # element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
+            #     #     0, point_tag
+            #     # )
+            #     node_tags, _, _ = gmsh.model.mesh.get_nodes(0, point_tag)
+            #     assert (len(node_tags)) == 1
+
+            #     # Set point senses
+            #     upward_adjacencies, _ = gmsh.model.get_adjacencies(0, point_tag)
+            #     for a in upward_adjacencies:
+            #         core.add_parent_child(curve_map[a].handle, point_set.handle)
+
+            #     core.add_entities(point_set.handle, node_tag_map[node_tags[0]])
 
             # 4. Add volume sets and surface sense
             volume_dimtags = gmsh.model.get_entities(3)
@@ -983,12 +1024,11 @@ class DAGMCModel(MOABModel):
                     assert (reverse_vol := volume_map.get(reverse_vol_tag)) is not None
                     surface.reverse_volume = reverse_vol
 
-            core
-
             # 5. Delete empty volumes
             for volume in volume_map.values():
                 if not core.get_child_meshsets(volume.handle):
-                    logger.warning(f"Volume {volume.global_id} has no assigned edges. ")
+                    # logger.warning(f"Volume {volume.global_id} has no assigned edges. ")
+                    ...
                     # logger.warning(
                     #     f"Volume {volume.global_id} has no assigned surfaces. "
                     #     "Removing from MOAB model."
@@ -998,9 +1038,9 @@ class DAGMCModel(MOABModel):
             for surface in surface_map.values():
                 if not core.get_child_meshsets(surface.handle):
                     ...
-                    logger.warning(
-                        f"Suface {surface.global_id} has no assigned edges. "
-                    )
+                    # logger.warning(
+                    #     f"Suface {surface.global_id} has no assigned edges. "
+                    # )
                     # logger.warning(
                     #     f"Suface {surface.global_id} has no assigned edges. "
                     #     "Removing from MOAB model."
@@ -1020,7 +1060,6 @@ class DAGMCModel(MOABModel):
             for e in entities:
                 core.tag_set_data(global_id_map_tag, e.handle, e.global_id)
 
-
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
             # TODO(akoen): faceting tol set to a random value
@@ -1029,9 +1068,40 @@ class DAGMCModel(MOABModel):
             # significance is not clear
             # core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
             core.tag_set_data(model.faceting_tol_tag, file_set, 0.1)
+            # core.tag_set_data(model.faceting_tol_tag, file_set, 1e-5)
             core.add_entities(file_set, all_entities)
 
             # core.tag_set_data(model.faceting_tol_tag, model.root_set)
+
+            vertices = core.get_entities_by_dimension(0, 0, recur=True)
+            edges = core.get_entities_by_dimension(0, 1, recur=True)
+            triangles = core.get_entities_by_dimension(0, 2, recur=True)
+
+            n_adjacencies = np.empty(len(vertices), dtype=np.uint32)
+            for i, v in enumerate(vertices):
+                n_adjacencies[i]=len(core.get_adjacencies(v, 2))
+            bins = {}
+            for i, c in enumerate(np.bincount(n_adjacencies)):
+                bins[i] = int(c)
+            logger.info(f"Vertex-Triangle # adjacencies = {bins}")
+
+            n_adjacencies = np.empty(len(edges), dtype=np.uint32)
+            for i, v in enumerate(edges):
+                n_adjacencies[i]=len(core.get_adjacencies(v, 2))
+            bins = {}
+            for i, c in enumerate(np.bincount(n_adjacencies)):
+                bins[i] = int(c)
+            logger.info(f"Edge-Triangle bins = {bins}")
+
+            n_adjacencies = np.empty(len(triangles), dtype=np.uint32)
+            for i, t in enumerate(triangles):
+                adjacencies = core.get_adjacencies(t, 2)
+                connectivity = core.get_connectivity(t)
+                n_adjacencies[i]=len(adjacencies)
+            bins = {}
+            for i, c in enumerate(np.bincount(n_adjacencies)):
+                bins[i] = int(c)
+            logger.info(f"Triangle-Triangle adjacencies = {bins}")
 
             return model
 
@@ -1063,6 +1133,7 @@ class DAGMCModel(MOABModel):
         """
         curve_handles = self._get_entities_of_geom_dimension(1)
         return [DAGMCCurve(self, h) for h in curve_handles]
+
     @property
     def surfaces(self) -> list[DAGMCSurface]:
         """Get surfaces in this model.
