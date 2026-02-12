@@ -195,42 +195,21 @@ def test_mesh_surface_capped_torus_bcs(geom_bd_capped_torus):
     for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
         mesh = sm.SurfaceMesh.from_geometry(geom_bd_capped_torus, options)
         with mesh:
-            dim_tags = gmsh.model.get_physical_groups()
-            surface_bc_dim_tag = dim_tags[0]
-            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
-                *surface_bc_dim_tag
-            )
-            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
-            assert surface_bc_group_name == "boundary:reflecting"
-            assert np.all(
-                surface_bc_tags == np.array([2, 3, 5, 6, 8, 9, 11, 12], dtype=np.int32)
-            )
-
-            volume_mat_dim_tag = dim_tags[1]
-            volume_mat_tags = gmsh.model.get_entities_for_physical_group(
-                *volume_mat_dim_tag
-            )
-            volume_mat_group_name = gmsh.model.get_physical_name(*volume_mat_dim_tag)
-            assert volume_mat_group_name == "mat:"
-            assert np.all(volume_mat_tags == np.array([1, 2, 3, 4], dtype=np.int32))
+            for dim, tag in gmsh.model.get_entities(2):
+                if tag in [2, 3, 5, 6, 8, 9, 11, 12]:
+                    assert (
+                        mesh.entity_metadata(dim, tag).boundary_condition
+                        == "reflecting"
+                    )
 
 
 def test_mesh_torus_single_surface_bc(geom_bd_torus_single_surface):
     for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
         mesh = sm.SurfaceMesh.from_geometry(geom_bd_torus_single_surface, options)
         with mesh:
-            dim_tags = gmsh.model.get_physical_groups()
-
-            assert len(dim_tags) == 1, "Too many physical groups"
-
-            surface_bc_dim_tag = dim_tags[0]
-            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
-                *surface_bc_dim_tag
-            )
-            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
-
-            assert surface_bc_group_name == "boundary:vacuum"
-            assert np.all(surface_bc_tags == np.array([1], dtype=np.int32))
+            for dim, tag in gmsh.model.get_entities(2):
+                if tag in [1]:
+                    assert mesh.entity_metadata(dim, tag).boundary_condition == "vacuum"
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):

@@ -102,6 +102,7 @@ class Model(ABC):
         msh = sm.SurfaceMesh.from_geometry(
             geom, sm.OCCSurfaceOptions(tol_angular_deg=0.2)
         )
+        logger.info(f"Mesh file {msh._mesh_filename}")
         return msh
 
     @cached_property
