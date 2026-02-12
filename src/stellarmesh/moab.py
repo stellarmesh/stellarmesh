@@ -913,8 +913,10 @@ class DAGMCModel(MOABModel):
                             )
 
                         adj = core.get_adjacencies(Range(new_handles[i]), 1, True)
-                        if len(adj)!=3:
-                            logger.error("Triangle {i} has no edge adjacencies.", exc_info=True)
+                        if len(adj) != 3:
+                            logger.error(
+                                "Triangle {i} has no edge adjacencies.", exc_info=True
+                            )
                 except Exception as e:
                     logger.error(f"Failed at element {i}: {e}")
                     raise
@@ -1079,7 +1081,7 @@ class DAGMCModel(MOABModel):
 
             n_adjacencies = np.empty(len(vertices), dtype=np.uint32)
             for i, v in enumerate(vertices):
-                n_adjacencies[i]=len(core.get_adjacencies(v, 2))
+                n_adjacencies[i] = len(core.get_adjacencies(v, 2))
             bins = {}
             for i, c in enumerate(np.bincount(n_adjacencies)):
                 bins[i] = int(c)
@@ -1087,7 +1089,7 @@ class DAGMCModel(MOABModel):
 
             n_adjacencies = np.empty(len(edges), dtype=np.uint32)
             for i, v in enumerate(edges):
-                n_adjacencies[i]=len(core.get_adjacencies(v, 2))
+                n_adjacencies[i] = len(core.get_adjacencies(v, 2))
             bins = {}
             for i, c in enumerate(np.bincount(n_adjacencies)):
                 bins[i] = int(c)
@@ -1097,7 +1099,7 @@ class DAGMCModel(MOABModel):
             for i, t in enumerate(triangles):
                 adjacencies = core.get_adjacencies(t, 2)
                 connectivity = core.get_connectivity(t)
-                n_adjacencies[i]=len(adjacencies)
+                n_adjacencies[i] = len(adjacencies)
             bins = {}
             for i, c in enumerate(np.bincount(n_adjacencies)):
                 bins[i] = int(c)

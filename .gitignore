@@ -1,6 +1,7 @@
 .env
 .envrc
 .direnv/
+typings/
 *.egg-info/
 .vscode/
 .devcontainer/

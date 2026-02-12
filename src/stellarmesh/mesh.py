@@ -400,42 +400,6 @@ class Mesh:
                 gmsh.fltk.finalize()
             return output_filename
 
-    def scaled(self, factor: float) -> Mesh:
-        """Return a new mesh scaled by factor.
-
-        Args:
-            factor: Scale factor.
-
-        Raises:
-            ValueError: If negative scale factor.
-
-        Returns:
-            New scaled mesh.
-        """
-        if factor <= 0:
-            raise ValueError("Scale factor must be positive.")
-        new_filename = str(
-            Path(self._mesh_filename).with_suffix(".scaled.msh").resolve()
-        )
-        with self:
-            gmsh.option.set_number("Mesh.SaveAll", 1)
-            gmsh.write(new_filename)
-        mesh_scaled = type(self)(new_filename)
-        with mesh_scaled:
-            dim_tags = gmsh.model.get_entities(2)
-            for dim, tag in dim_tags:
-                node_tags, coords, _ = gmsh.model.mesh.get_nodes(dim, tag)
-                element_types, element_tags, node_tags2 = gmsh.model.mesh.get_elements(
-                    dim, tag
-                )
-                gmsh.model.mesh.clear([(dim, tag)])
-                gmsh.model.mesh.add_nodes(dim, tag, node_tags, coords * factor)  # type: ignore
-                gmsh.model.mesh.add_elements(
-                    dim, tag, element_types, element_tags, node_tags2
-                )
-            mesh_scaled._save_changes()
-        return mesh_scaled
-
     @overload
     def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...
 
