@@ -177,64 +177,6 @@ class DAGMCCurve(DAGMCEntitySet):
     """DAGMC curve entity."""
 
     @property
-    def curve_sense(
-        self,
-    ) -> Optional[Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]]:
-        """Curve sense data."""
-        try:
-            if (
-                hasattr(self.model, "_deferred_curve_senses")
-                and self.handle in self.model._deferred_curve_senses
-            ):
-                ents, senses = self.model._deferred_curve_senses[self.handle]
-                surfaces = [DAGMCSurface(self.model, ent) for ent in ents]
-                return list(zip(surfaces, senses, strict=True))
-
-            ents = self.model._core.tag_get_data(
-                self.model.curve_sense_tags[0], self.handle, flat=True
-            )
-            surfaces = [DAGMCSurface(self.model, ent) for ent in ents]
-            senses = self.model._core.tag_get_data(
-                self.model.curve_sense_tags[1], self.handle, flat=True
-            )
-        except RuntimeError:
-            return None
-
-        return list(zip(surfaces, senses, strict=True))
-
-    # NOTE: Pymoab has a bug and fails to write variable length tags, so we must write
-    # the tags manually
-    @curve_sense.setter
-    def curve_sense(
-        self,
-        curve_senses: Sequence[
-            tuple[DAGMCSurface, Literal[-1] | Literal[0] | Literal[1]]
-        ],
-    ):
-        ents_data = np.array(
-            [curve_sense[0].handle for curve_sense in curve_senses], dtype=np.uint64
-        )
-        sense_data = np.array(
-            [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
-        )
-
-        # Trigger creation of tags
-        _ = self.model.curve_sense_tags
-
-        self.model._deferred_curve_senses[self] = curve_senses
-
-        parents = self.model._core.get_parent_meshsets(self.handle)
-        for parent in parents:
-            if parent not in ents_data:
-                # REVIEW (akoen): pymoab seems not to have a remove_parent method.
-                logger.warning(
-                    f"Curve has existing parent {parent} that cannot be removed."
-                )
-        # Establish parent-child relationships
-        for surf_handle in ents_data:
-            self.model._core.add_parent_child(surf_handle, self.handle)
-
-    @property
     def adjacent_surfaces(self) -> list[DAGMCSurface]:
         """Get adjacent surfaces.
 
@@ -476,26 +418,6 @@ class MOABModel:
         )
 
     @cached_property
-    def curve_sense_tags(self) -> tuple[pymoab.tag.Tag, pymoab.tag.Tag]:
-        """Curve sense tags."""
-        return (
-            self._core.tag_get_handle(
-                "GEOM_SENSE_N_ENTS",
-                0,
-                pymoab.types.MB_TYPE_HANDLE,
-                pymoab.types.MB_TAG_SPARSE | pymoab.types.MB_TAG_VARLEN,
-                create_if_missing=True,
-            ),
-            self._core.tag_get_handle(
-                "GEOM_SENSE_N_SENSES",
-                0,
-                pymoab.types.MB_TYPE_INTEGER,
-                pymoab.types.MB_TAG_SPARSE | pymoab.types.MB_TAG_VARLEN,
-                create_if_missing=True,
-            ),
-        )
-
-    @cached_property
     def faceting_tol_tag(self) -> pymoab.tag.Tag:
         """Faceting tolerance tag."""
         return self._core.tag_get_handle(
@@ -569,115 +491,6 @@ class MOABModel:
 
 class DAGMCModel(MOABModel):
     """DAGMC Model."""
-
-    def __init__(self, core_or_file: Union[PathLike, pymoab.core.Core]):
-        super().__init__(core_or_file)
-        self._deferred_curve_senses: dict[
-            DAGMCCurve, Sequence[tuple[DAGMCSurface, Literal[-1] | Literal[1]]]
-        ] = {}
-
-    def write(self, filename: PathLike):
-        """Write DAGMC model to .h5m, .vtk, or other file.
-
-        Args:
-            filename: Filename with format-appropriate extension.
-        """
-        super().write(filename)
-
-        if str(filename).endswith(".h5m") and self._deferred_curve_senses:
-            self._write_deferred_tags(filename)
-
-    def _write_deferred_tags(self, filename: PathLike):
-        """Write deferred tags to HDF5 file."""
-        with h5py.File(filename, "r+") as f:
-            curves = sorted(
-                self._deferred_curve_senses.keys(), key=lambda c: c.global_id
-            )
-            # id_list = [c.global_id for c in curves]
-            # id
-
-            # GEOM_SENSE_N_ENTS (handles)
-            ents_values = []
-            ents_indices = [1]
-
-            # GEOM_SENSE_N_SENSES (integers)
-            senses_values = []
-            senses_indices = [1]
-
-            global_id_handle_map: dict[int, int] = {}
-            handles = f["tstt/tags/GLOBAL_ID_MAP/id_list"][:]
-            global_ids = f["tstt/tags/GLOBAL_ID_MAP/values"][:]
-
-            for h, g in zip(handles, global_ids, strict=True):
-                global_id_handle_map[g] = h
-
-            id_list = [global_id_handle_map[c.global_id] for c in curves]
-
-            for i, curve in enumerate(curves):
-                # ents, senses = self._deferred_curve_senses[h]
-                curve_senses = self._deferred_curve_senses[curve]
-
-                ents_data = np.array(
-                    [
-                        global_id_handle_map[curve_sense[0].global_id]
-                        for curve_sense in curve_senses
-                    ],
-                    dtype=np.uint64,
-                )
-                # ents_data = np.array(
-                #     [curve_sense[0].handle   for curve_sense in curve_senses],
-                #     dtype=np.uint64,
-                # )
-                sense_data = np.array(
-                    [curve_sense[1] for curve_sense in curve_senses], dtype=np.int32
-                )
-
-                ents_values.extend(ents_data)
-                ents_indices.append(ents_indices[-1] + len(ents_data))
-
-                senses_values.extend(sense_data)
-                senses_indices.append(senses_indices[-1] + len(sense_data))
-
-            self._write_single_tag(
-                f,
-                "GEOM_SENSE_N_ENTS",
-                id_list,
-                ents_values,
-                ents_indices[:-1],
-                np.uint64,
-            )
-            self._write_single_tag(
-                f,
-                "GEOM_SENSE_N_SENSES",
-                id_list,
-                senses_values,
-                senses_indices[:-1],
-                np.int32,
-            )
-
-    def _write_single_tag(self, f, tag_name, id_list, values, var_indices, dtype):
-        if "tstt/tags" not in f:
-            raise RuntimeError("No tstt/tags group")
-
-        tags_grp = f["tstt/tags"]
-        if tag_name not in tags_grp:
-            logger.warning(f"Tag {tag_name} not found in HDF5 file. Skipping.")
-            return
-
-        tag_grp = tags_grp[tag_name]
-        target = (
-            tag_grp["sparse"]
-            if isinstance(tag_grp, h5py.Group) and "sparse" in tag_grp
-            else tag_grp
-        )
-        for name, data, dt in (
-            ("id_list", id_list, np.uint64),
-            ("values", values, dtype),
-            ("var_indices", var_indices, np.uint64),
-        ):
-            if name in target:
-                del target[name]
-            target.create_dataset(name, data=np.array(data, dtype=dt))
 
     def create_group(self, group_name: str) -> DAGMCGroup:
         """Create new group.
@@ -931,80 +744,6 @@ class DAGMCModel(MOABModel):
 
             assert len(debug_unused_nodes) == 0
 
-            # # 3. Add curves
-            # curve_map: Final[dict[int, DAGMCCurve]] = {}
-            # curve_dimtags = gmsh.model.get_entities(1)
-            # curve_tags = [c[1] for c in curve_dimtags]
-
-            # logger.debug(f"Mesh has {len(curve_tags)} curves")
-            # for i, curve_tag in enumerate(curve_tags):
-            #     # Add elements to MOAB
-            #     element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-            #         1, curve_tag
-            #     )
-
-            #     if len(node_tags_list[0]) == 0:
-            #         logger.warning(f"Curve {curve_tag} has no elements. Skipping.")
-            #         continue
-            #         # raise RuntimeError(f"Curve {curve_tag} has no elements.")
-
-            #     curve_set = model.create_curve(curve_tag)
-            #     curve_map[curve_tag] = curve_set
-
-            #     # curve_set = model.create_curve()
-            #     # global_id = curve_set.global_id
-            #     # curve_map[curve_tag] = curve_set
-
-            #     # Set curve senses
-            #     # TODO(akoen): Have not confirmed that boundary signs are correct
-            #     upward_adjacencies, _ = gmsh.model.get_adjacencies(1, curve_tag)
-            #     curve_sense: list[tuple[DAGMCSurface, Literal[-1] | Literal[1]]] = [
-            #         None
-            #     ] * len(upward_adjacencies)
-            #     for i, a in enumerate(upward_adjacencies):
-            #         boundary = gmsh.model.get_boundary(
-            #             [(2, a)], combined=True, oriented=True
-            #         )
-            #         for _, b in boundary:
-            #             if np.abs(b) == curve_tag:
-            #                 # curve_sense[i] = (surface_map[a], np.sign(b))
-            #                 # Set curve sense to unknown (-1)
-            #                 curve_sense[i] = (surface_map[a], -1)
-
-            #     curve_set.curve_sense = curve_sense
-
-            #     moab_conn = np.array(
-            #         [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
-            #     )
-
-            #     edges = core.create_elements(
-            #         pymoab.types.MBEDGE, moab_conn.reshape(-1, 2)
-            #     )
-            #     core.add_entities(curve_set.handle, edges)
-            #     core.add_entities(curve_set.handle, np.unique(moab_conn))
-
-            # # 3. Add points
-            # # TODO(akoen): Untested since blanket model has only periodic curves
-            # point_dimtags = gmsh.model.get_entities(0)
-            # point_tags = [c[1] for c in point_dimtags]
-            # logger.debug(f"Mesh has {len(point_tags)} points")
-            # for i, point_tag in enumerate(point_tags):
-            #     point_set = model.create_point(point_tag)
-
-            #     # # Add elements to MOAB
-            #     # element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-            #     #     0, point_tag
-            #     # )
-            #     node_tags, _, _ = gmsh.model.mesh.get_nodes(0, point_tag)
-            #     assert (len(node_tags)) == 1
-
-            #     # Set point senses
-            #     upward_adjacencies, _ = gmsh.model.get_adjacencies(0, point_tag)
-            #     for a in upward_adjacencies:
-            #         core.add_parent_child(curve_map[a].handle, point_set.handle)
-
-            #     core.add_entities(point_set.handle, node_tag_map[node_tags[0]])
-
             # 4. Add volume sets and surface sense
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
@@ -1048,19 +787,6 @@ class DAGMCModel(MOABModel):
                     #     "Removing from MOAB model."
                     # )
                     # core.delete_entity(surface.handle)
-
-            # Map file handles
-            global_id_map_tag = core.tag_get_handle(
-                "GLOBAL_ID_MAP",
-                1,
-                pymoab.types.MB_TYPE_INTEGER,
-                pymoab.types.MB_TAG_SPARSE,
-                create_if_missing=True,
-            )
-
-            entities = model.curves + model.surfaces
-            for e in entities:
-                core.tag_set_data(global_id_map_tag, e.handle, e.global_id)
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
