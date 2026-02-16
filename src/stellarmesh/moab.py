@@ -625,8 +625,6 @@ class DAGMCModel(MOABModel):
             # 1. Add nodes
             node_tags, coords, _ = gmsh.model.mesh.get_nodes()
             assert len(node_tags) == len(np.unique(node_tags))
-            # print(len(coords.reshape(-1, 3)))
-            # print(len(np.unique(node_tags.reshape(-1, 3), axis=0)))
             if np.isnan(coords).any():
                 raise ValueError("Mesh coordinates contain NaNs.")
             if np.isinf(coords).any():
@@ -634,7 +632,6 @@ class DAGMCModel(MOABModel):
 
             moab_vertices = core.create_vertices(coords)
             core.tag_set_data(model.id_tag, moab_vertices, node_tags.astype(np.int32))
-            debug_unused_nodes = np.array(moab_vertices)
             node_tag_map: dict[int, int] = dict(
                 zip(node_tags, moab_vertices, strict=True)
             )
@@ -682,40 +679,14 @@ class DAGMCModel(MOABModel):
                         "{element_types}"
                     )
 
-                moab_conn = np.array(
-                    [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
-                )
-
-                debug_unused_nodes = np.setdiff1d(debug_unused_nodes, moab_conn)
-
-                # reshaped_conn = moab_conn.reshape(-1, 3)
-                # if (
-                #     np.any(reshaped_conn[:, 0] == reshaped_conn[:, 1])
-                #     or np.any(reshaped_conn[:, 1] == reshaped_conn[:, 2])
-                #     or np.any(reshaped_conn[:, 2] == reshaped_conn[:, 0])
-                # ):
-                #     raise RuntimeError(
-                #         f"Surface {surface_tag} contains degenerate triangles (duplicate vertices). "
-                #         "This may cause OBB tree construction to fail."
-                #     )
-
-                # ---------------------------------------------------------
-                # ROBUST FIX: Manual Element Loop
-                # ---------------------------------------------------------
-
-                # 1. Create the flat array and reshape (Standard setup)
                 moab_conn_flat = np.array(
                     [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
                 )
                 moab_conn_2d = moab_conn_flat.reshape(-1, 3)
 
-                # 2. Pre-allocate array for the new handles
                 num_elements = len(moab_conn_2d)
                 new_handles = np.zeros(num_elements, dtype=np.uint64)
 
-                # 3. Loop and create elements individually
-                #    This bypasses the broken bulk wrapper by using the method
-                #    we KNOW works (create_element).
                 try:
                     for i, conn in enumerate(moab_conn_2d):
                         new_handles[i] = core.create_element(pymoab.types.MBTRI, conn)
@@ -731,18 +702,15 @@ class DAGMCModel(MOABModel):
                                 "Triangle {i} has no edge adjacencies.", exc_info=True
                             )
                 except Exception as e:
-                    logger.error(f"Failed at element {i}: {e}")
+                    logger.exception(f"Failed at create triangle at element {i}: {e}")
                     raise
 
-                # 4. Convert NumPy array of handles to a MOAB Range
                 triangles = Range(new_handles)
 
                 # 5. Add to the Surface Set
                 core.add_entities(surface_set.handle, triangles)
                 core.add_entities(surface_set.handle, np.unique(moab_conn_flat))
                 ...
-
-            assert len(debug_unused_nodes) == 0
 
             # 4. Add volume sets and surface sense
             volume_dimtags = gmsh.model.get_entities(3)

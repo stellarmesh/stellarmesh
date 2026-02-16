@@ -1,5 +1,6 @@
 """Continuous integration tests with OpenMC."""
 
+import importlib.resources
 import logging
 import random
 import tempfile
@@ -13,6 +14,8 @@ import numpy as np
 import openmc
 import openmc.stats
 import pytest
+
+from . import resources
 
 import stellarmesh as sm
 
@@ -250,6 +253,105 @@ class NestedCylinders(Model):
         return [s1, s2]
 
 
+class NestedCylindersThroughHoleNX(Model):
+    """Two nested blanket cylinders with a through hole, generated in NX."""
+
+    bounded: bool = False
+    radius1 = 150 / 10
+    radius2 = 230 / 10
+    radius3 = 250 / 10
+    radius_through_hole = 2
+    height = 25
+
+    @cached_property
+    def materials(self):
+        mat_plasma = openmc.Material(name="PLASMA")
+        mat_plasma.add_nuclide("H2", 0.5, "ao")
+        mat_plasma.add_nuclide("H3", 0.5, "ao")
+
+        mat_b1 = openmc.Material(name="B1")
+        mat_b1.add_nuclide("Fe56", 1)
+        mat_b1.set_density("g/cm3", 1)
+
+        mat_b2 = openmc.Material(name="B2")
+        mat_b2.add_nuclide("Be9", 1)
+        mat_b2.set_density("g/cm3", 1)
+
+        return openmc.Materials([mat_plasma, mat_b1, mat_b2])
+
+    def get_tallies(self, geom_type):
+        mat_filter = openmc.MaterialFilter(self.materials)
+        tally = openmc.Tally(name="flux_tally")
+        tally.filters = [mat_filter]
+        tally.scores = ["flux"]
+
+        return openmc.Tallies([tally])
+
+    @cached_property
+    def source(self):
+        source = openmc.IndependentSource()
+        r = openmc.stats.Discrete([0], [1])
+        phi = openmc.stats.Uniform(0, 2 * np.pi)
+        z = openmc.stats.Uniform(1e-6, self.height - 1e-6)
+        source.space = openmc.stats.CylindricalIndependent(r, phi, z)
+        source.angle = openmc.stats.Isotropic()
+        source.energy = openmc.stats.Discrete([14e6], [1])
+        return source
+
+    @cached_property
+    def geom_csg(self):
+        surface_zmin = openmc.ZPlane(z0=0, boundary_type="reflective")
+        surface_zmax = openmc.ZPlane(z0=self.height, boundary_type="reflective")
+        surface_r1 = openmc.ZCylinder(
+            r=self.radius1,
+        )
+        surface_r2 = openmc.ZCylinder(
+            r=self.radius2,
+        )
+
+        surface_r3 = openmc.ZCylinder(r=self.radius3, boundary_type="vacuum")
+
+        region_through_hole = (
+            +openmc.XPlane()
+            & -openmc.XCylinder(z0=self.height / 2, r=self.radius_through_hole)
+            & +surface_r1
+            & -surface_r3
+        )
+
+        region_plasma = -surface_r1 & +surface_zmin & -surface_zmax
+        region_b1 = (
+            +surface_r1 & -surface_r2 & +surface_zmin & -surface_zmax
+        ) & ~region_through_hole
+        region_b2 = (
+            +surface_r2 & -surface_r3 & +surface_zmin & -surface_zmax
+        ) & ~region_through_hole
+
+        cell_hole = openmc.Cell(fill=None, region=region_through_hole)
+        cell_plasma = openmc.Cell(fill=self.materials[0], region=region_plasma)
+        cell_b1 = openmc.Cell(fill=self.materials[1], region=region_b1)
+        cell_b2 = openmc.Cell(fill=self.materials[2], region=region_b2)
+
+        csg_geometry = openmc.Geometry([cell_hole, cell_plasma, cell_b1, cell_b2])
+        return csg_geometry
+
+    @cached_property
+    def mesh(self) -> sm.SurfaceMesh:
+        """Generate the mesh."""
+        with importlib.resources.path(
+            resources, "concentric-cylinders-with-through-hole.msh"
+        ) as path:
+            msh = sm.SurfaceMesh(path)
+            with msh:
+                msh.entity_metadata(2, 9).boundary_condition = "vacuum"  # Outer radius
+                msh.entity_metadata(
+                    2, 13
+                ).boundary_condition = "vacuum"  # Through hole outer radius
+                z_surfaces = [4, 1, 10, 5, 2, 11]
+                for surf in z_surfaces:
+                    msh.entity_metadata(2, surf).boundary_condition = "reflecting"
+            return msh
+
+
 class Torus(Model):
     """Single-volume torus with flux tally."""
 
@@ -372,7 +474,8 @@ class TorusSurface(Model):
 
 
 @pytest.mark.parametrize(
-    "model_cls", [NestedSpheres, NestedCylinders, Torus, TorusSurface]
+    "model_cls",
+    [NestedSpheres, NestedCylinders, NestedCylindersThroughHoleNX, Torus, TorusSurface],
 )
 def test_model(model_cls: Type[Model], tmp_path: Path):
     """Run CSG and DAGMC models and compare tallies for agreement."""
@@ -409,7 +512,9 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
                 csg_tally_result.mean,
                 cad_tally_result.mean,
                 rtol=RELATIVE_TOLERANCE_PERCENT,
-            ), f"CSG and CAD tallies do not match within {RELATIVE_TOLERANCE_PERCENT}%"
+            ), (
+                f"CSG and CAD tallies do not match within {RELATIVE_TOLERANCE_PERCENT * 100}%"
+            )
 
             if model_cls.fail_if_identical:
                 assert not np.allclose(

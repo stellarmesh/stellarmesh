@@ -63,6 +63,7 @@ openmc = { version = "==0.15.2", build = "dagmc_nompi*" }
 python = "==3.11"
 setuptools_scm = ">=9.2.0,<10"
 mypy = ">=1.19.1,<2"
+openmc-plotter = ">=0.5.0,<0.6"
 
 [feature.build123d.dependencies]
 build123d = ">=0.9.1,<0.10"

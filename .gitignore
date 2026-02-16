@@ -30,8 +30,10 @@ dist/
 README_files/
 README.html
 __pycache__/
+*.Identifier
 
 !tests/resources/*.brep
+!tests/resources/*.msh
 
 # pixi environments
 .pixi/*
