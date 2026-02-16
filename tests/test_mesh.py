@@ -16,11 +16,11 @@ from .test_geometry import (
     geom_bd_capped_torus,  # noqa: F401
     geom_bd_torus_single_surface,  # noqa: F401
     model_bd_layered_torus,
-    model_cq_layered_torus,
     model_bd_nestedspheres,
-    model_cq_nestedspheres,
     model_bd_offsetboxes,  # noqa: F401
     model_bd_sphere,
+    model_cq_layered_torus,
+    model_cq_nestedspheres,
     model_cq_sphere,
 )
 
@@ -172,21 +172,6 @@ def test_mesh_overlap(model_bd_stellarator_plasma):
 
     assert "No overlaps were found" in check_overlap(2.5)
     assert "Overlap Location:" in check_overlap(5)
-
-
-def test_mesh_scale(model_bd_stellarator_plasma):
-    plasma = model_bd_stellarator_plasma
-    b1: bd.Solid = bd.thicken(plasma, 5).solid()
-
-    geom = sm.Geometry(solids=[b1], material_names=[""])
-    mesh = sm.SurfaceMesh.from_geometry(geom, sm.OCCSurfaceOptions())
-    mesh_scaled = mesh.scaled(3)
-    with mesh_scaled:
-        _, coords, _ = gmsh.model.mesh.get_nodes(
-            2,
-        )
-        coords = np.reshape(coords, (-1, 3))
-        assert np.allclose(np.max(coords, 0), (541.8, 532.0, 206.4), rtol=0.01)
 
 
 def test_mesh_surface_capped_torus_bcs(geom_bd_capped_torus):

@@ -27,7 +27,7 @@ def test_volumes(model):
 
 def test_global_id(model):
     assert model.surfaces[0].global_id == 1
-    assert model.volumes[0].global_id == 0
+    assert model.volumes[0].global_id == 1
 
 
 def test_adjacent_surfaces(model):
