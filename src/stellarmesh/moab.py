@@ -14,13 +14,12 @@ import subprocess
 import tempfile
 import warnings
 from functools import cached_property
-from typing import Final, Literal, Optional, Sequence, Union
+from typing import Final, Optional, Union
 
-import h5py
 import numpy as np
 
 from ._core import PathLike
-from .mesh import Mesh, SurfaceMetadata
+from .mesh import Mesh
 
 try:
     import gmsh
@@ -385,15 +384,6 @@ class MOABModel:
         """Global ID tag."""
         # Default tag, does not need to be created
         return self._core.tag_get_handle(pymoab.types.GLOBAL_ID_TAG_NAME)
-        #   rval = mdbImpl->tag_get_handle(GLOBAL_ID_TAG_NAME, 1, moab::MB_TYPE_INTEGER,
-        #                                  id_tag, moab::MB_TAG_DENSE | moab::MB_TAG_ANY, &zero);
-        # return self._core.tag_get_handle(
-        #     pymoab.types.GLOBAL_ID_TAG_NAME,
-        #     1,
-        #     pymoab.types.MB_TYPE_INTEGER,
-        #     pymoab.types.MB_TAG_DENSE,
-        #     create_if_missing=True,
-        # )
 
     @cached_property
     def geom_dimension_tag(self) -> pymoab.tag.Tag:
