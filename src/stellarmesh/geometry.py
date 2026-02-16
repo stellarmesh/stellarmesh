@@ -19,14 +19,29 @@ from typing import (
 )
 
 try:
-    from OCP.BOPAlgo import BOPAlgo_MakeConnected
-    from OCP.BRep import BRep_Builder
-    from OCP.BRepTools import BRepTools
-    from OCP.IFSelect import IFSelect_RetDone
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_SOLID
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape, TopoDS_Shell, TopoDS_Solid
+    from OCP.BOPAlgo import (  # pyright: ignore[reportMissingModuleSource]
+        BOPAlgo_MakeConnected,
+    )
+    from OCP.BRep import BRep_Builder  # pyright: ignore[reportMissingModuleSource]
+    from OCP.BRepTools import BRepTools  # pyright: ignore[reportMissingModuleSource]
+    from OCP.IFSelect import (  # pyright: ignore[reportMissingModuleSource]
+        IFSelect_RetDone,
+    )
+    from OCP.STEPControl import (  # pyright: ignore[reportMissingModuleSource]
+        STEPControl_Reader,
+    )
+    from OCP.TopAbs import (  # pyright: ignore[reportMissingModuleSource]
+        TopAbs_ShapeEnum,
+        TopAbs_SOLID,
+    )
+    from OCP.TopExp import TopExp_Explorer  # pyright: ignore[reportMissingModuleSource]
+    from OCP.TopoDS import (  # pyright: ignore[reportMissingModuleSource]
+        TopoDS,
+        TopoDS_Face,
+        TopoDS_Shape,
+        TopoDS_Shell,
+        TopoDS_Solid,
+    )
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."

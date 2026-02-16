@@ -32,19 +32,31 @@ except ImportError as e:
     ) from e
 
 try:
-    from OCP.BRep import BRep_Tool
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh
-    from OCP.BRepTools import BRepTools
-    from OCP.IMeshTools import (
+    from OCP.BRep import BRep_Tool  # pyright: ignore[reportMissingModuleSource]
+    from OCP.BRepMesh import (  # pyright: ignore[reportMissingModuleSource]
+        BRepMesh_IncrementalMesh,
+    )
+    from OCP.BRepTools import BRepTools  # pyright: ignore[reportMissingModuleSource]
+    from OCP.IMeshTools import (  # pyright: ignore[reportMissingModuleSource]
         IMeshTools_MeshAlgoType_Delabella,
         IMeshTools_MeshAlgoType_Watson,
         IMeshTools_Parameters,
     )
-    from OCP.ShapeFix import ShapeFix_ShapeTolerance
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound, TopoDS_Shape
+    from OCP.ShapeFix import (  # pyright: ignore[reportMissingModuleSource]
+        ShapeFix_ShapeTolerance,
+    )
+    from OCP.TopAbs import (  # pyright: ignore[reportMissingModuleSource]
+        TopAbs_FACE,
+        TopAbs_FORWARD,
+    )
+    from OCP.TopExp import TopExp_Explorer  # pyright: ignore[reportMissingModuleSource]
+    from OCP.TopLoc import TopLoc_Location  # pyright: ignore[reportMissingModuleSource]
+    from OCP.TopoDS import (  # pyright: ignore[reportMissingModuleSource]
+        TopoDS,
+        TopoDS_Builder,
+        TopoDS_Compound,
+        TopoDS_Shape,
+    )
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."
@@ -185,8 +197,6 @@ class OCCSurfaceOptions:
 
         if self.tol_linear:
             # DeflectionInterior is set to Deflection in OCCT
-            params
-            # DeflectionInterior is set to Deflection in OCCT
             params.Deflection = self.tol_linear
         else:
             params.Deflection = float("inf")
@@ -215,7 +225,7 @@ class EntityMetadata:
     _dim: int
     _tag: int
 
-    def _get_metadata_group(self, create_if_missing: bool = True) -> Optional[int]:
+    def _get_metadata_group(self, *, create_if_missing: bool = True) -> Optional[int]:
         self._mesh._check_is_initialized()
         physical_groups = gmsh.model.get_physical_groups_for_entity(
             self._dim, self._tag
@@ -233,27 +243,23 @@ class EntityMetadata:
         return pg
 
     def __getattr__(self, name):
+        """EntityMetadata getter."""
         if name.startswith("_"):
             return None
         type_hints = get_type_hints(self)
         metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
         url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
         data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
-        # for d in data:
-        #     if d not in type_hints:
-        #         # logger.warning(f"Key {d} is not a property of {self.__class__.__name__}")
-        #         ...
-        if name not in data:
+        if name not in data or data.get(name) == "None" or name not in type_hints:
             return None
-        elif data.get(name) == "None":
-            return None
-        ret = type_hints.get(name)(data.get(name))
-        # logger.debug(
-        #     f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
-        # )
+        ret = type_hints.get(name)(data.get(name))  # pyright: ignore[reportOptionalCall]
+        logger.debug(
+            f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
+        )
         return ret
 
     def __setattr__(self, name, value):
+        """EntityMetadata setter."""
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
@@ -420,6 +426,10 @@ class Mesh:
             return SurfaceMetadata(_mesh=self, _dim=dim, _tag=tag)
         if dim == 3:
             return VolumeMetadata(_mesh=self, _dim=dim, _tag=tag)
+        else:
+            raise RuntimeError(
+                f"Metadata for entity for dimension {dim} not implemented."
+            )
 
     @staticmethod
     def _check_is_initialized():
@@ -434,7 +444,7 @@ class Mesh:
         for dim_tag in dim_tags:
             tags = gmsh.model.get_entities_for_physical_group(*dim_tag)
             name = gmsh.model.get_physical_name(*dim_tag)
-            physical_groups[dim_tag] = (tags, name)
+            physical_groups[dim_tag] = (tags, name)  # pyright: ignore[reportArgumentType]
         gmsh.model.remove_physical_groups(dim_tags)
 
         try:
@@ -596,7 +606,7 @@ class SurfaceMesh(Mesh):
             known_surfaces = set()
             volume_dimtags = gmsh.model.get_entities(3)
             volume_tags = [v[1] for v in volume_dimtags]
-            for i, volume_tag in enumerate(volume_tags):
+            for volume_tag in volume_tags:
                 _, surface_tags = gmsh.model.get_adjacencies(3, volume_tag)
                 for surface_tag in surface_tags:
                     if surface_tag not in known_surfaces:

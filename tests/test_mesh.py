@@ -6,7 +6,6 @@ from pathlib import Path
 
 import build123d as bd
 import gmsh
-import numpy as np
 import pytest
 
 import stellarmesh as sm
@@ -147,8 +146,8 @@ def model_bd_stellarator_plasma():
 
 def test_mesh_overlap(model_bd_stellarator_plasma):
     plasma = model_bd_stellarator_plasma
-    b1 = bd.thicken(plasma, 5).solid()
-    b2 = bd.thicken(b1.faces()[0], 5).solid()
+    b1: bd.Solid = bd.thicken(plasma, 5).solid()  # pyright: ignore[reportAssignmentType]
+    b2: bd.Solid = bd.thicken(b1.faces()[0], 5).solid()  # pyright: ignore[reportAssignmentType]
 
     def check_overlap(tol_linear):
         geom = sm.Geometry(solids=[b1, b2], material_names=[""] * 2)

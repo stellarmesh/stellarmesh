@@ -45,8 +45,13 @@ logger = logging.getLogger(__name__)
 class EntitySet:
     """A MOAB entity set."""
 
-    model: MOABModel
-    handle: np.uint64
+    _model: MOABModel
+    handle: Final[np.uint64]
+
+    @property
+    def model(self) -> MOABModel:
+        """Get owning MOABModel of this EntitySet."""
+        return self._model
 
     def __init__(self, model: MOABModel, handle: np.uint64):
         """Initialize entity set.
@@ -55,7 +60,7 @@ class EntitySet:
             model: MOAB model
             handle: Handle of entity set
         """
-        self.model = model
+        self._model = model
         self.handle = handle
 
     def __eq__(self, other) -> bool:
@@ -164,7 +169,10 @@ class DAGMCGroup(EntitySet):
 class DAGMCEntitySet(EntitySet):
     """An entity set for a DAGMC topological surface or volume."""
 
-    model: DAGMCModel
+    @property
+    def model(self) -> DAGMCModel:
+        """Get owning DAGMCModel of this DAGMCEntitySet."""
+        return self._model  # type: ignore
 
     @property
     def groups(self) -> list[DAGMCGroup]:
@@ -353,8 +361,10 @@ class MOABModel:
         if isinstance(core_or_file, (str, os.PathLike)):
             core = pymoab.core.Core()
             core.load_file(str(core_or_file))
-        else:
+        elif isinstance(core_or_file, (pymoab.core.Core)):
             core = core_or_file
+        else:
+            raise TypeError("core_or_file is of invalid type.")
         self._core = core
 
     @cached_property
@@ -621,7 +631,7 @@ class DAGMCModel(MOABModel):
                 raise ValueError("Mesh coordinates contain infinite values.")
 
             moab_vertices = core.create_vertices(coords)
-            core.tag_set_data(model.id_tag, moab_vertices, node_tags.astype(np.int32))
+            core.tag_set_data(model.id_tag, moab_vertices, node_tags.astype(np.int32))  # pyright: ignore[reportAttributeAccessIssue]
             node_tag_map: dict[int, int] = dict(
                 zip(node_tags, moab_vertices, strict=True)
             )
@@ -677,23 +687,29 @@ class DAGMCModel(MOABModel):
                 num_elements = len(moab_conn_2d)
                 new_handles = np.zeros(num_elements, dtype=np.uint64)
 
-                try:
-                    for i, conn in enumerate(moab_conn_2d):
+                for j, conn in enumerate(moab_conn_2d):
+                    try:
                         new_handles[i] = core.create_element(pymoab.types.MBTRI, conn)
-                        adj = core.get_adjacencies(Range(new_handles[i]), 0, False)
+                        adj = core.get_adjacencies(
+                            Range(new_handles[j]), 0, create_if_missing=False
+                        )
                         if len(adj) != 3:
                             logger.error(
-                                "Triangle {i} has no vertex adjacencies.", exc_info=True
+                                "Triangle {j} has no vertex adjacencies.", exc_info=True
                             )
 
-                        adj = core.get_adjacencies(Range(new_handles[i]), 1, True)
+                        adj = core.get_adjacencies(
+                            Range(new_handles[j]), 1, create_if_missing=True
+                        )
                         if len(adj) != 3:
                             logger.error(
-                                "Triangle {i} has no edge adjacencies.", exc_info=True
+                                "Triangle {j} has no edge adjacencies.", exc_info=True
                             )
-                except Exception as e:
-                    logger.exception(f"Failed at create triangle at element {i}: {e}")
-                    raise
+                    except Exception as e:
+                        logger.exception(
+                            f"Failed at create triangle at element {j}: {e}"
+                        )
+                        raise
 
                 triangles = Range(new_handles)
 
