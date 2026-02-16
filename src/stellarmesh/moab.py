@@ -749,36 +749,6 @@ class DAGMCModel(MOABModel):
             core.tag_set_data(model.faceting_tol_tag, file_set, 0.1)
             core.add_entities(file_set, all_entities)
 
-            vertices = core.get_entities_by_dimension(0, 0, recur=True)
-            edges = core.get_entities_by_dimension(0, 1, recur=True)
-            triangles = core.get_entities_by_dimension(0, 2, recur=True)
-
-            n_adjacencies = np.empty(len(vertices), dtype=np.uint32)
-            for i, v in enumerate(vertices):
-                n_adjacencies[i] = len(core.get_adjacencies(v, 2))
-            bins = {}
-            for i, c in enumerate(np.bincount(n_adjacencies)):
-                bins[i] = int(c)
-            logger.info(f"Vertex-Triangle # adjacencies = {bins}")
-
-            n_adjacencies = np.empty(len(edges), dtype=np.uint32)
-            for i, v in enumerate(edges):
-                n_adjacencies[i] = len(core.get_adjacencies(v, 2))
-            bins = {}
-            for i, c in enumerate(np.bincount(n_adjacencies)):
-                bins[i] = int(c)
-            logger.info(f"Edge-Triangle bins = {bins}")
-
-            n_adjacencies = np.empty(len(triangles), dtype=np.uint32)
-            for i, t in enumerate(triangles):
-                adjacencies = core.get_adjacencies(t, 2)
-                connectivity = core.get_connectivity(t)
-                n_adjacencies[i] = len(adjacencies)
-            bins = {}
-            for i, c in enumerate(np.bincount(n_adjacencies)):
-                bins[i] = int(c)
-            logger.info(f"Triangle-Triangle adjacencies = {bins}")
-
             return model
 
     @classmethod
