@@ -727,34 +727,18 @@ class DAGMCModel(MOABModel):
             for surface_tag, surface in surface_map.items():
                 metadata = mesh.entity_metadata(2, surface_tag)
                 if (forward_vol_tag := metadata.forward_volume) is not None:
-                    assert (forward_vol := volume_map.get(forward_vol_tag)) is not None
+                    forward_vol = volume_map.get(forward_vol_tag)
+                    assert forward_vol is not None
                     surface.forward_volume = forward_vol
                 if (reverse_vol_tag := metadata.reverse_volume) is not None:
-                    assert (reverse_vol := volume_map.get(reverse_vol_tag)) is not None
+                    reverse_vol = volume_map.get(reverse_vol_tag)
+                    assert reverse_vol is not None
                     surface.reverse_volume = reverse_vol
 
-            # 5. Delete empty volumes
+            # 5. Warn on empty volumes
             for volume in volume_map.values():
                 if not core.get_child_meshsets(volume.handle):
-                    # logger.warning(f"Volume {volume.global_id} has no assigned edges. ")
-                    ...
-                    # logger.warning(
-                    #     f"Volume {volume.global_id} has no assigned surfaces. "
-                    #     "Removing from MOAB model."
-                    # )
-                    # core.delete_entity(volume.handle)
-
-            for surface in surface_map.values():
-                if not core.get_child_meshsets(surface.handle):
-                    ...
-                    # logger.warning(
-                    #     f"Suface {surface.global_id} has no assigned edges. "
-                    # )
-                    # logger.warning(
-                    #     f"Suface {surface.global_id} has no assigned edges. "
-                    #     "Removing from MOAB model."
-                    # )
-                    # core.delete_entity(surface.handle)
+                    logger.error(f"Volume {volume.global_id} has no assigned surfaces.")
 
             all_entities = core.get_entities_by_handle(0)
             file_set = core.create_meshset()
@@ -762,12 +746,8 @@ class DAGMCModel(MOABModel):
             # https://github.com/Thea-Energy/neutronics-cad/issues/5
             # faceting_tol required to be set for make_watertight, although its
             # significance is not clear
-            # core.tag_set_data(model.faceting_tol_tag, file_set, 1e-3)
             core.tag_set_data(model.faceting_tol_tag, file_set, 0.1)
-            # core.tag_set_data(model.faceting_tol_tag, file_set, 1e-5)
             core.add_entities(file_set, all_entities)
-
-            # core.tag_set_data(model.faceting_tol_tag, model.root_set)
 
             vertices = core.get_entities_by_dimension(0, 0, recur=True)
             edges = core.get_entities_by_dimension(0, 1, recur=True)

@@ -8,16 +8,14 @@ desc: Mesh class wraps Gmsh functionality for geometry meshing.
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 import subprocess
 import tempfile
-from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal, Optional, Union, get_type_hints, overload
+from pathlib import Path
+from typing import Any, Literal, Optional, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
 
 import meshio
