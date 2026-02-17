@@ -72,7 +72,7 @@ build123d = ">=0.9.1,<0.10"
 openmc_data_downloader = "*"
 
 [feature.ci.tasks]
-download-xs = "openmc_data_downloader -l ENDFB-7.1-NNDC -i Fe56 Be9"
+download-xs = "openmc_data_downloader -l ENDFB-7.1-NNDC -i Fe56 Be9 H2 H3"
 test = { cmd = "pytest --log-cli-level=INFO --ignore tests/test_examples.py --ignore tests/test_mesh_benchmark.py --ignore tests/test_geometry_cq.py", depends-on = [
     "download-xs",
 ] }
