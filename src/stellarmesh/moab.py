@@ -262,8 +262,6 @@ class DAGMCSurface(DAGMCEntitySet):
         existing_group = False
         for group in self.model.groups:
             if f"boundary:{name}" == group.name:
-                # Add volume to group matching specified name, unless the volume
-                # is already in it
                 if self in group:
                     return
                 group.add(self)
@@ -274,7 +272,6 @@ class DAGMCSurface(DAGMCEntitySet):
                 group.remove(self)
 
         if not existing_group:
-            # Create new group and add entity
             new_group = self.model.create_group(f"boundary:{name}")
             new_group.global_id = (
                 max((g.global_id for g in self.model.groups), default=0) + 1
@@ -323,19 +320,15 @@ class DAGMCVolume(DAGMCEntitySet):
         existing_group = False
         for group in self.model.groups:
             if f"mat:{name}" == group.name:
-                # Add volume to group matching specified name, unless the volume
-                # is already in it
                 if self in group:
                     return
                 group.add(self)
                 existing_group = True
 
             elif self in group and group.name.startswith("mat:"):
-                # Remove volume from existing group
                 group.remove(self)
 
         if not existing_group:
-            # Create new group and add entity
             new_group = self.model.create_group(f"mat:{name}")
             new_group.global_id = (
                 max((g.global_id for g in self.model.groups), default=0) + 1
