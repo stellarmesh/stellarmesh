@@ -689,7 +689,7 @@ class DAGMCModel(MOABModel):
 
                 for j, conn in enumerate(moab_conn_2d):
                     try:
-                        new_handles[i] = core.create_element(pymoab.types.MBTRI, conn)
+                        new_handles[j] = core.create_element(pymoab.types.MBTRI, conn)
                         adj = core.get_adjacencies(
                             Range(new_handles[j]), 0, create_if_missing=False
                         )
