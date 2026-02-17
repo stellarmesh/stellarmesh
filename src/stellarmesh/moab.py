@@ -616,146 +616,143 @@ class DAGMCModel(MOABModel):
         model = cls(core)
 
         with mesh:
-            # Warn about volume elements being discarded
             if gmsh.model.mesh.get_elements(3)[1]:
                 logger.warning("Discarding volume elements from mesh.")
 
             gmsh.model.mesh.removeDuplicateNodes()
 
-            # 1. Add nodes
-            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
-            assert len(node_tags) == len(np.unique(node_tags))
-            if np.isnan(coords).any():
-                raise ValueError("Mesh coordinates contain NaNs.")
-            if np.isinf(coords).any():
-                raise ValueError("Mesh coordinates contain infinite values.")
-
-            moab_vertices = core.create_vertices(coords)
-            core.tag_set_data(model.id_tag, moab_vertices, node_tags.astype(np.int32))  # pyright: ignore[reportAttributeAccessIssue]
-            node_tag_map: dict[int, int] = dict(
-                zip(node_tags, moab_vertices, strict=True)
-            )
-
-            # 2. Add surface elements and boundary conditions
-            surface_map: Final[dict[int, DAGMCSurface]] = {}
-            surface_dimtags = gmsh.model.get_entities(2)
-            surface_tags: Final[list[int]] = [s[1] for s in surface_dimtags]
-            logger.debug(f"Mesh has {len(surface_tags)} surfaces")
-            for i, surface_tag in enumerate(surface_tags):
-                element_types, _, node_tags_list = gmsh.model.mesh.get_elements(
-                    2, surface_tag
-                )
-
-                if len(node_tags_list[0]) == 0:
-                    raise RuntimeError(f"Surface {surface_tag} has no elements")
-
-                surface_set = model.create_surface(surface_tag)
-                surface_map[surface_tag] = surface_set
-
-                if (
-                    bc := mesh.entity_metadata(2, surface_tag).boundary_condition
-                ) is not None:
-                    surface_set.boundary = bc
-
-                volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[
-                    0
-                ]
-                if len(volume_adjacencies_dimtags) == 0:
-                    logger.warning(
-                        "DAGMC does not support surfaces without attached "
-                        "volumes. Creating a void volume for surface "
-                        f"{surface_tag}."
-                    )
-                    existing_vol_tags = [v[1] for v in gmsh.model.get_entities(3)]
-                    new_id = max(existing_vol_tags, default=0) + 1
-                    volume_set = model.create_volume(new_id)
-                    volume_set.material = "void"
-                    surface_set.forward_volume = volume_set
-
-                # Add elements to MOAB
-                if len(element_types) != 1 or element_types[0] != 2:
-                    raise RuntimeError(
-                        f"Non-triangular element in surface {surface_tag}: "
-                        "{element_types}"
-                    )
-
-                moab_conn_flat = np.array(
-                    [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
-                )
-                moab_conn_2d = moab_conn_flat.reshape(-1, 3)
-
-                num_elements = len(moab_conn_2d)
-                new_handles = np.zeros(num_elements, dtype=np.uint64)
-
-                for j, conn in enumerate(moab_conn_2d):
-                    try:
-                        new_handles[j] = core.create_element(pymoab.types.MBTRI, conn)
-                        adj = core.get_adjacencies(
-                            Range(new_handles[j]), 0, create_if_missing=False
-                        )
-                        if len(adj) != 3:
-                            logger.error(
-                                "Triangle {j} has no vertex adjacencies.", exc_info=True
-                            )
-
-                        adj = core.get_adjacencies(
-                            Range(new_handles[j]), 1, create_if_missing=True
-                        )
-                        if len(adj) != 3:
-                            logger.error(
-                                "Triangle {j} has no edge adjacencies.", exc_info=True
-                            )
-                    except Exception as e:
-                        logger.exception(
-                            f"Failed at create triangle at element {j}: {e}"
-                        )
-                        raise
-
-                triangles = Range(new_handles)
-
-                # 5. Add to the Surface Set
-                core.add_entities(surface_set.handle, triangles)
-                core.add_entities(surface_set.handle, np.unique(moab_conn_flat))
-                ...
-
-            # 4. Add volume sets and surface sense
-            volume_dimtags = gmsh.model.get_entities(3)
-            volume_tags = [v[1] for v in volume_dimtags]
-            volume_map: Final[dict[int, DAGMCVolume]] = {}
-            logger.debug(f"Mesh has {len(volume_tags)} volumes")
-            for i, volume_tag in enumerate(volume_tags):
-                volume_set = model.create_volume(volume_tag)
-                volume_map[volume_tag] = volume_set
-
-                mat_name = mesh.entity_metadata(3, volume_tag).material
-                volume_set.material = mat_name
-
-            for surface_tag, surface in surface_map.items():
-                metadata = mesh.entity_metadata(2, surface_tag)
-                if (forward_vol_tag := metadata.forward_volume) is not None:
-                    forward_vol = volume_map.get(forward_vol_tag)
-                    assert forward_vol is not None
-                    surface.forward_volume = forward_vol
-                if (reverse_vol_tag := metadata.reverse_volume) is not None:
-                    reverse_vol = volume_map.get(reverse_vol_tag)
-                    assert reverse_vol is not None
-                    surface.reverse_volume = reverse_vol
-
-            # 5. Warn on empty volumes
-            for volume in volume_map.values():
-                if not core.get_child_meshsets(volume.handle):
-                    logger.error(f"Volume {volume.global_id} has no assigned surfaces.")
-
-            all_entities = core.get_entities_by_handle(0)
-            file_set = core.create_meshset()
-            # TODO(akoen): faceting tol set to a random value
-            # https://github.com/Thea-Energy/neutronics-cad/issues/5
-            # faceting_tol required to be set for make_watertight, although its
-            # significance is not clear
-            core.tag_set_data(model.faceting_tol_tag, file_set, 0.1)
-            core.add_entities(file_set, all_entities)
+            node_tag_map = model._add_nodes()
+            surface_map = model._add_surfaces(mesh, node_tag_map)
+            model._add_volumes(mesh, surface_map)
+            model._finalize_file_set()
 
             return model
+
+    def _add_nodes(self) -> dict[int, int]:
+        """Add nodes to MOAB model.
+
+        Return map from Gmsh tag to MOAB handle.
+        """
+        node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+        if len(node_tags) != len(np.unique(node_tags)):
+            raise ValueError("Duplicate node tags found.")
+        if np.isnan(coords).any():
+            raise ValueError("Mesh coordinates contain NaNs.")
+        if np.isinf(coords).any():
+            raise ValueError("Mesh coordinates contain infinite values.")
+
+        moab_vertices = self._core.create_vertices(coords)
+        self._core.tag_set_data(self.id_tag, moab_vertices, node_tags.astype(np.int32))  # pyright: ignore[reportAttributeAccessIssue]
+
+        return dict(zip(node_tags, moab_vertices, strict=True))
+
+    def _add_surfaces(
+        self, mesh: Mesh, node_tag_map: dict[int, int]
+    ) -> dict[int, DAGMCSurface]:
+        """Add surfaces to MOAB model.
+
+        Return map from Gmsh tag to MOAB handle.
+        """
+        surface_map: dict[int, DAGMCSurface] = {}
+        surface_dimtags = gmsh.model.get_entities(2)
+        surface_tags = [s[1] for s in surface_dimtags]
+        logger.debug(f"Mesh has {len(surface_tags)} surfaces")
+
+        for surface_tag in surface_tags:
+            surface_set = self.create_surface(surface_tag)
+            surface_map[surface_tag] = surface_set
+
+            if (
+                bc := mesh.entity_metadata(2, surface_tag).boundary_condition
+            ) is not None:
+                surface_set.boundary = bc
+
+            self._create_surface_elements(surface_tag, surface_set, node_tag_map)
+            self._create_volume_friend_for_lonely_surfaces(surface_tag, surface_set)
+
+        return surface_map
+
+    def _create_surface_elements(
+        self, surface_tag: int, surface_set: DAGMCSurface, node_tag_map: dict[int, int]
+    ):
+        """Process elements for a single surface."""
+        element_types, _, node_tags_list = gmsh.model.mesh.get_elements(2, surface_tag)
+        if len(node_tags_list[0]) == 0:
+            raise RuntimeError(f"Surface {surface_tag} has no elements")
+
+        if len(element_types) != 1 or element_types[0] != 2:
+            raise RuntimeError(
+                f"Non-triangular element in surface {surface_tag}: {element_types}"
+            )
+
+        moab_conn_flat = np.array(
+            [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
+        )
+        moab_conn_2d = moab_conn_flat.reshape(-1, 3)
+
+        new_handles = np.zeros(len(moab_conn_2d), dtype=np.uint64)
+        for j, conn in enumerate(moab_conn_2d):
+            new_handles[j] = self._core.create_element(pymoab.types.MBTRI, conn)
+
+        triangles = Range(new_handles)
+        self._core.add_entities(surface_set.handle, triangles)
+        # Add vertices to the set as well (topologically required by some tools?)
+        self._core.add_entities(surface_set.handle, np.unique(moab_conn_flat))
+
+    def _create_volume_friend_for_lonely_surfaces(
+        self, surface_tag: int, surface_set: DAGMCSurface
+    ):
+        """Handle surfaces without attached volumes by creating void volumes."""
+        volume_adjacencies_dimtags = gmsh.model.get_adjacencies(2, surface_tag)[0]
+        if len(volume_adjacencies_dimtags) == 0:
+            logger.warning(
+                "DAGMC does not support surfaces without attached "
+                "volumes. Creating a void volume for surface "
+                f"{surface_tag}."
+            )
+            existing_vol_tags = [v[1] for v in gmsh.model.get_entities(3)]
+            new_id = max(existing_vol_tags, default=0) + 1
+            volume_set = self.create_volume(new_id)
+            volume_set.material = "void"
+            surface_set.forward_volume = volume_set
+
+    def _add_volumes(self, mesh: Mesh, surface_map: dict[int, DAGMCSurface]):
+        """Add volumes and set up surface sense metadata."""
+        volume_dimtags = gmsh.model.get_entities(3)
+        volume_tags = [v[1] for v in volume_dimtags]
+        volume_map: dict[int, DAGMCVolume] = {}
+        logger.debug(f"Mesh has {len(volume_tags)} volumes")
+
+        for volume_tag in volume_tags:
+            volume_set = self.create_volume(volume_tag)
+            volume_map[volume_tag] = volume_set
+            mat_name = mesh.entity_metadata(3, volume_tag).material
+            volume_set.material = mat_name
+
+        for surface_tag, surface in surface_map.items():
+            metadata = mesh.entity_metadata(2, surface_tag)
+            if (forward_vol_tag := metadata.forward_volume) is not None:
+                forward_vol = volume_map.get(forward_vol_tag)
+                assert forward_vol is not None
+                surface.forward_volume = forward_vol
+            if (reverse_vol_tag := metadata.reverse_volume) is not None:
+                reverse_vol = volume_map.get(reverse_vol_tag)
+                assert reverse_vol is not None
+                surface.reverse_volume = reverse_vol
+
+        # Warn on empty volumes
+        for volume in volume_map.values():
+            if not self._core.get_child_meshsets(volume.handle):
+                logger.error(f"Volume {volume.global_id} has no assigned surfaces.")
+
+    def _finalize_file_set(self):
+        """Create file set and set global tags."""
+        all_entities = self._core.get_entities_by_handle(0)
+        file_set = self._core.create_meshset()
+        # TODO(akoen): faceting tol set to a random value
+        # https://github.com/Thea-Energy/neutronics-cad/issues/5
+        self._core.tag_set_data(self.faceting_tol_tag, file_set, 0.1)
+        self._core.add_entities(file_set, all_entities)
 
     @classmethod
     def make_from_mesh(cls, mesh: Mesh) -> DAGMCModel:
