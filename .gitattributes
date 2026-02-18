@@ -2,3 +2,4 @@
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true
 *.msh filter=lfs diff=lfs merge=lfs -text
 *.brep filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
