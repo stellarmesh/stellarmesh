@@ -14,6 +14,7 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
+import shutil
 from pathlib import Path
 from typing import Any, Literal, Optional, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
@@ -322,14 +323,17 @@ class Mesh:
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
+        Mesh operations are saved only to a temporary file. Persist changes externally
+        with the Mesh `write` method.
+
         Args:
-            mesh_filename: Optional .msh filename. If not provided defaults to a
-            temporary file. Defaults to None.
+            mesh_filename: Optional .msh file to load. Defaults to None.
         """
-        if not mesh_filename:
-            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as mesh_file:
-                mesh_filename = mesh_file.name
-        self._mesh_filename = str(mesh_filename)
+        with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp_file:
+            self._mesh_filename = tmp_file.name
+
+        if mesh_filename:
+            shutil.copy2(str(mesh_filename), self._mesh_filename)
 
     def __enter__(self):
         """Enter mesh context, setting gmsh commands to operate on this mesh."""
@@ -360,6 +364,9 @@ class Mesh:
     def _save_changes(self, *, save_all: bool = True):
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.write(self._mesh_filename)
+
+    def __deepcopy__(self, memo):
+        return Mesh(self._mesh_filename)
 
     def write(
         self, filename: PathLike, *, save_all: bool = True, use_meshio: bool = False

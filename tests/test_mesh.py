@@ -1,5 +1,6 @@
 """Meshing tests."""
 
+import copy
 import importlib.resources
 import subprocess
 from pathlib import Path
@@ -24,13 +25,18 @@ from .test_geometry import (
 )
 
 
-def test_entity_metadata(model_bd_sphere):
+@pytest.fixture
+def mesh_sphere_occ(model_bd_sphere):
     geom = sm.Geometry(model_bd_sphere, material_names=[""])
     mesh = sm.SurfaceMesh.from_geometry(
         geom,
         sm.OCCSurfaceOptions(tol_angular_deg=0.5),
     )
+    return copy.deepcopy(mesh)
 
+
+def test_entity_metadata(mesh_sphere_occ):
+    mesh = mesh_sphere_occ
     mesh.entity_metadata(2, 1).forward_volume  # noqa: B018
     mesh.entity_metadata(2, 1).forward_volume = 10
     assert mesh.entity_metadata(2, 1).forward_volume == 10
@@ -38,6 +44,18 @@ def test_entity_metadata(model_bd_sphere):
         mesh.entity_metadata(2, 1).invalid_attrib  # noqa: B018
     with pytest.raises(AttributeError, match=r".*has no attribute invalid_attrib.*"):
         mesh.entity_metadata(2, 1).invalid_attrib = 10
+
+
+def test_mesh_immutability(mesh_sphere_occ, tmp_path):
+    mesh_sphere_occ.write(tmp_path / "mesh.msh")
+
+    mesh1 = sm.Mesh(tmp_path / "mesh.msh")
+    mesh1.entity_metadata(2, 1).forward_volume  # noqa: B018
+    mesh1.entity_metadata(2, 1).forward_volume = 10
+    assert mesh1.entity_metadata(2, 1).forward_volume == 10
+
+    mesh2 = sm.Mesh(tmp_path / "mesh.msh")
+    assert mesh2.entity_metadata(2, 1).forward_volume == 1
 
 
 @pytest.mark.parametrize(
