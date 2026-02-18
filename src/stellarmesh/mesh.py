@@ -9,14 +9,15 @@ desc: Mesh class wraps Gmsh functionality for geometry meshing.
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import tempfile
-from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Literal, Optional, get_type_hints, overload
+from urllib.parse import parse_qs, urlencode
 
 import meshio
 import numpy as np
@@ -32,19 +33,31 @@ except ImportError as e:
     ) from e
 
 try:
-    from OCP.BRep import BRep_Tool
-    from OCP.BRepMesh import BRepMesh_IncrementalMesh
-    from OCP.BRepTools import BRepTools
-    from OCP.IMeshTools import (
+    from OCP.BRep import BRep_Tool  # pyright: ignore[reportMissingModuleSource]
+    from OCP.BRepMesh import (  # pyright: ignore[reportMissingModuleSource]
+        BRepMesh_IncrementalMesh,
+    )
+    from OCP.BRepTools import BRepTools  # pyright: ignore[reportMissingModuleSource]
+    from OCP.IMeshTools import (  # pyright: ignore[reportMissingModuleSource]
         IMeshTools_MeshAlgoType_Delabella,
         IMeshTools_MeshAlgoType_Watson,
         IMeshTools_Parameters,
     )
-    from OCP.ShapeFix import ShapeFix_ShapeTolerance
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_FORWARD
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS, TopoDS_Builder, TopoDS_Compound, TopoDS_Shape
+    from OCP.ShapeFix import (  # pyright: ignore[reportMissingModuleSource]
+        ShapeFix_ShapeTolerance,
+    )
+    from OCP.TopAbs import (  # pyright: ignore[reportMissingModuleSource]
+        TopAbs_FACE,
+        TopAbs_FORWARD,
+    )
+    from OCP.TopExp import TopExp_Explorer  # pyright: ignore[reportMissingModuleSource]
+    from OCP.TopLoc import TopLoc_Location  # pyright: ignore[reportMissingModuleSource]
+    from OCP.TopoDS import (  # pyright: ignore[reportMissingModuleSource]
+        TopoDS,
+        TopoDS_Builder,
+        TopoDS_Compound,
+        TopoDS_Shape,
+    )
 except ImportError as e:
     raise ImportError(
         "OCP not found. See Stellarmesh installation instructions."
@@ -202,6 +215,103 @@ class OCCSurfaceOptions:
         return params
 
 
+@dataclass(kw_only=True)
+class EntityMetadata:
+    """Metadata for a Mesh elementary entity.
+
+    Attributes are stored as a Gmsh physical group name.
+    """
+
+    _mesh: Mesh
+    _dim: int
+    _tag: int
+
+    def _get_metadata_group(self, *, create_if_missing: bool = True) -> Optional[int]:
+        with self._mesh:
+            physical_groups = gmsh.model.get_physical_groups_for_entity(
+                self._dim, self._tag
+            )
+            for pg in physical_groups:
+                entities = gmsh.model.get_entities_for_physical_group(self._dim, pg)
+                if len(entities) == 1 and entities[0] == self._tag:
+                    return pg
+            if not create_if_missing:
+                raise RuntimeError(
+                    f"Entity ({self._dim}, {self._tag}) has no metadata group"
+                )
+
+            pg = gmsh.model.add_physical_group(self._dim, [self._tag], self._tag)
+            self._mesh._save_changes()
+            return pg
+
+    def __getattr__(self, name):
+        """EntityMetadata getter."""
+        if name.startswith("_"):
+            return None
+        type_hints = get_type_hints(self)
+        metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
+        with self._mesh:
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+            data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+            if name not in type_hints:
+                raise AttributeError(
+                    f"{self.__class__.__name__} has no attribute {name}."
+                )
+            if name not in data or data.get(name) == "None" or name not in type_hints:
+                return None
+            ret = type_hints.get(name)(data.get(name))  # pyright: ignore[reportOptionalCall]
+            logger.debug(
+                "Returning metadata"
+                + f"dim={self._dim}, tag={self._tag}, name={name}: {ret}"
+            )
+            return ret
+
+    def __setattr__(self, name, value):
+        """EntityMetadata setter."""
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+            return
+        with self._mesh:
+            metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+
+            if url_str != "":
+                data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+            else:
+                data = {"tag": self._tag}
+            if name not in get_type_hints(self):
+                raise AttributeError(
+                    f"{self.__class__.__name__} has no attribute {name}."
+                )
+            data[name] = value
+            gmsh.model.remove_physical_groups([(self._dim, metadata_group)])
+            new_url_str = urlencode(data)
+            gmsh.model.add_physical_group(
+                self._dim, [self._tag], metadata_group, new_url_str
+            )
+            logger.debug(
+                "Setting metadata"
+                + f"dim={self._dim}, tag={self._tag}, name={name}: {value}"
+            )
+            self._mesh._save_changes()
+
+
+@dataclass(kw_only=True)
+class SurfaceMetadata(EntityMetadata):
+    """Metadata for a Mesh elementary surface."""
+
+    forward_volume: int = field(init=False)
+    reverse_volume: int = field(init=False)
+    boundary_condition: str = field(init=False)
+
+
+@dataclass(kw_only=True)
+class VolumeMetadata(EntityMetadata):
+    """Metadata for a Mesh elementary volume."""
+
+    material: str = field(init=False)
+
+
 class Mesh:
     """A Gmsh mesh.
 
@@ -210,38 +320,56 @@ class Mesh:
     """
 
     _mesh_filename: str
+    _ref_count: int = 0
 
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
+        Mesh operations are saved only to a temporary file. Persist changes externally
+        with the Mesh `write` method.
+
         Args:
-            mesh_filename: Optional .msh filename. If not provided defaults to a
-            temporary file. Defaults to None.
+            mesh_filename: Optional .msh file to load. Defaults to None.
         """
-        if not mesh_filename:
-            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as mesh_file:
-                mesh_filename = mesh_file.name
-        self._mesh_filename = str(mesh_filename)
+        with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp_file:
+            self._mesh_filename = tmp_file.name
+
+        if mesh_filename:
+            shutil.copy2(str(mesh_filename), self._mesh_filename)
 
     def __enter__(self):
         """Enter mesh context, setting gmsh commands to operate on this mesh."""
-        if not gmsh.is_initialized():
+        if self._ref_count == 0:
+            if gmsh.is_initialized():
+                raise RuntimeError("Gmsh is already initialized on another model.")
             gmsh.initialize()
+            gmsh.option.set_number(
+                "General.Terminal",
+                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+            )
+            mesh_path = Path(self._mesh_filename)
+            if mesh_path.exists() and mesh_path.stat().st_size > 0:
+                gmsh.open(self._mesh_filename)
+            else:
+                gmsh.clear()
 
-        gmsh.option.set_number(
-            "General.Terminal",
-            1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-        )
-        gmsh.open(self._mesh_filename)
+        self._ref_count += 1
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Cleanup (finalize) gmsh."""
-        gmsh.finalize()
+        self._ref_count -= 1
+        if self._ref_count == 0:
+            gmsh.finalize()
 
     def _save_changes(self, *, save_all: bool = True):
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.write(self._mesh_filename)
+
+    def __deepcopy__(self, memo):
+        """Return a deep copy of this mesh."""
+        return Mesh(self._mesh_filename)
 
     def write(
         self, filename: PathLike, *, save_all: bool = True, use_meshio: bool = False
@@ -308,41 +436,32 @@ class Mesh:
                 gmsh.fltk.finalize()
             return output_filename
 
-    def scaled(self, factor: float) -> Mesh:
-        """Return a new mesh scaled by factor.
+    @overload
+    def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...
+
+    @overload
+    def entity_metadata(self, dim: Literal[3], tag: int) -> VolumeMetadata: ...
+
+    def entity_metadata(
+        self, dim: Literal[1] | Literal[2] | Literal[3], tag: int
+    ) -> EntityMetadata:
+        """Get metadata for an entity.
 
         Args:
-            factor: Scale factor.
-
-        Raises:
-            ValueError: If negative scale factor.
+            dim: Entity dimension.
+            tag: Entity tag.
 
         Returns:
-            New scaled mesh.
+            Entity metadata.
         """
-        if factor <= 0:
-            raise ValueError("Scale factor must be positive.")
-        new_filename = str(
-            Path(self._mesh_filename).with_suffix(".scaled.msh").resolve()
-        )
-        with self:
-            gmsh.option.set_number("Mesh.SaveAll", 1)
-            gmsh.write(new_filename)
-        mesh_scaled = type(self)(new_filename)
-        with mesh_scaled:
-            dim_tags = gmsh.model.get_entities(2)
-            for dim, tag in dim_tags:
-                node_tags, coords, _ = gmsh.model.mesh.get_nodes(dim, tag)
-                element_types, element_tags, node_tags2 = gmsh.model.mesh.get_elements(
-                    dim, tag
-                )
-                gmsh.model.mesh.clear([(dim, tag)])
-                gmsh.model.mesh.add_nodes(dim, tag, node_tags, coords * factor)
-                gmsh.model.mesh.add_elements(
-                    dim, tag, element_types, element_tags, node_tags2
-                )
-            mesh_scaled._save_changes()
-        return mesh_scaled
+        if dim == 2:
+            return SurfaceMetadata(_mesh=self, _dim=dim, _tag=tag)
+        if dim == 3:
+            return VolumeMetadata(_mesh=self, _dim=dim, _tag=tag)
+        else:
+            raise RuntimeError(
+                f"Metadata for entity for dimension {dim} not implemented."
+            )
 
     @staticmethod
     def _check_is_initialized():
@@ -357,7 +476,7 @@ class Mesh:
         for dim_tag in dim_tags:
             tags = gmsh.model.get_entities_for_physical_group(*dim_tag)
             name = gmsh.model.get_physical_name(*dim_tag)
-            physical_groups[dim_tag] = (tags, name)
+            physical_groups[dim_tag] = (tags, name)  # pyright: ignore[reportArgumentType]
         gmsh.model.remove_physical_groups(dim_tags)
 
         try:
@@ -493,35 +612,40 @@ class SurfaceMesh(Mesh):
             gmsh.model.add("stellarmesh_model")
 
             # Solids
-            material_solid_map = defaultdict(list)
             for s, m in zip(geometry.solids, geometry.material_names, strict=True):
                 dim_tags = cls._import_occ(s)
+                gmsh.model.occ.synchronize()
                 if dim_tags[0][0] != 3:
                     raise TypeError("Importing non-solid geometry.")
 
                 solid_tag = dim_tags[0][1]
-                material_solid_map[m].append(solid_tag)
+                mesh.entity_metadata(3, solid_tag).material = m
 
             # Faces
-            surface_bc_map = defaultdict(list)
             for f, bc in zip(
                 geometry.faces, geometry.face_boundary_conditions, strict=True
             ):
                 dim_tags = cls._import_occ(f)
+                gmsh.model.occ.synchronize()
                 if dim_tags[0][0] != 2:
                     raise TypeError("Importing non-surface geometry.")
 
                 surface_tag = dim_tags[0][1]
-                surface_bc_map[bc].append(surface_tag)
-
-            gmsh.model.occ.synchronize()
+                mesh.entity_metadata(2, surface_tag).boundary_condition = bc
 
             assert len(gmsh.model.get_entities(3)) == len(geometry.solids)
 
-            for material, solid_tags in material_solid_map.items():
-                gmsh.model.add_physical_group(3, solid_tags, name=f"mat:{material}")
-            for bc, surface_tags in surface_bc_map.items():
-                gmsh.model.add_physical_group(2, surface_tags, name=f"boundary:{bc}")
+            known_surfaces = set()
+            volume_dimtags = gmsh.model.get_entities(3)
+            volume_tags = [v[1] for v in volume_dimtags]
+            for volume_tag in volume_tags:
+                _, surface_tags = gmsh.model.get_adjacencies(3, volume_tag)
+                for surface_tag in surface_tags:
+                    if surface_tag not in known_surfaces:
+                        known_surfaces.add(surface_tag)
+                        mesh.entity_metadata(2, surface_tag).forward_volume = volume_tag
+                    else:
+                        mesh.entity_metadata(2, surface_tag).reverse_volume = volume_tag
 
             if type(options).__name__ == GmshSurfaceOptions.__name__:
                 cls._mesh_gmsh(options)  # type: ignore

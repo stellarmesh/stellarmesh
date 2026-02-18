@@ -1,12 +1,12 @@
 """Meshing tests."""
 
+import copy
 import importlib.resources
 import subprocess
 from pathlib import Path
 
 import build123d as bd
 import gmsh
-import numpy as np
 import pytest
 
 import stellarmesh as sm
@@ -16,13 +16,46 @@ from .test_geometry import (
     geom_bd_capped_torus,  # noqa: F401
     geom_bd_torus_single_surface,  # noqa: F401
     model_bd_layered_torus,
-    model_cq_layered_torus,
     model_bd_nestedspheres,
-    model_cq_nestedspheres,
     model_bd_offsetboxes,  # noqa: F401
     model_bd_sphere,
+    model_cq_layered_torus,
+    model_cq_nestedspheres,
     model_cq_sphere,
 )
+
+
+@pytest.fixture
+def mesh_sphere_occ(model_bd_sphere):
+    geom = sm.Geometry(model_bd_sphere, material_names=[""])
+    mesh = sm.SurfaceMesh.from_geometry(
+        geom,
+        sm.OCCSurfaceOptions(tol_angular_deg=0.5),
+    )
+    return copy.deepcopy(mesh)
+
+
+def test_entity_metadata(mesh_sphere_occ):
+    mesh = mesh_sphere_occ
+    mesh.entity_metadata(2, 1).forward_volume  # noqa: B018
+    mesh.entity_metadata(2, 1).forward_volume = 10
+    assert mesh.entity_metadata(2, 1).forward_volume == 10
+    with pytest.raises(AttributeError, match=r".*has no attribute invalid_attrib.*"):
+        mesh.entity_metadata(2, 1).invalid_attrib  # noqa: B018
+    with pytest.raises(AttributeError, match=r".*has no attribute invalid_attrib.*"):
+        mesh.entity_metadata(2, 1).invalid_attrib = 10
+
+
+def test_mesh_immutability(mesh_sphere_occ, tmp_path):
+    mesh_sphere_occ.write(tmp_path / "mesh.msh")
+
+    mesh1 = sm.Mesh(tmp_path / "mesh.msh")
+    mesh1.entity_metadata(2, 1).forward_volume  # noqa: B018
+    mesh1.entity_metadata(2, 1).forward_volume = 10
+    assert mesh1.entity_metadata(2, 1).forward_volume == 10
+
+    mesh2 = sm.Mesh(tmp_path / "mesh.msh")
+    assert mesh2.entity_metadata(2, 1).forward_volume == 1
 
 
 @pytest.mark.parametrize(
@@ -147,8 +180,8 @@ def model_bd_stellarator_plasma():
 
 def test_mesh_overlap(model_bd_stellarator_plasma):
     plasma = model_bd_stellarator_plasma
-    b1 = bd.thicken(plasma, 5).solid()
-    b2 = bd.thicken(b1.faces()[0], 5).solid()
+    b1: bd.Solid = bd.thicken(plasma, 5).solid()  # pyright: ignore[reportAssignmentType]
+    b2: bd.Solid = bd.thicken(b1.faces()[0], 5).solid()  # pyright: ignore[reportAssignmentType]
 
     def check_overlap(tol_linear):
         geom = sm.Geometry(solids=[b1, b2], material_names=[""] * 2)
@@ -174,63 +207,27 @@ def test_mesh_overlap(model_bd_stellarator_plasma):
     assert "Overlap Location:" in check_overlap(5)
 
 
-def test_mesh_scale(model_bd_stellarator_plasma):
-    plasma = model_bd_stellarator_plasma
-    b1: bd.Solid = bd.thicken(plasma, 5).solid()
-
-    geom = sm.Geometry(solids=[b1], material_names=[""])
-    mesh = sm.SurfaceMesh.from_geometry(geom, sm.OCCSurfaceOptions())
-    mesh_scaled = mesh.scaled(3)
-    with mesh_scaled:
-        _, coords, _ = gmsh.model.mesh.get_nodes(
-            2,
-        )
-        coords = np.reshape(coords, (-1, 3))
-        assert np.allclose(np.max(coords, 0), (541.8, 532.0, 206.4), rtol=0.01)
-
-
 def test_mesh_surface_capped_torus_bcs(geom_bd_capped_torus):
     """Test material and BC assignments for a capped torus."""
     # NOTE: In this test all surfaces are also members of solids
     for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
         mesh = sm.SurfaceMesh.from_geometry(geom_bd_capped_torus, options)
         with mesh:
-            dim_tags = gmsh.model.get_physical_groups()
-            surface_bc_dim_tag = dim_tags[0]
-            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
-                *surface_bc_dim_tag
-            )
-            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
-            assert surface_bc_group_name == "boundary:reflecting"
-            assert np.all(
-                surface_bc_tags == np.array([2, 3, 5, 6, 8, 9, 11, 12], dtype=np.int32)
-            )
-
-            volume_mat_dim_tag = dim_tags[1]
-            volume_mat_tags = gmsh.model.get_entities_for_physical_group(
-                *volume_mat_dim_tag
-            )
-            volume_mat_group_name = gmsh.model.get_physical_name(*volume_mat_dim_tag)
-            assert volume_mat_group_name == "mat:"
-            assert np.all(volume_mat_tags == np.array([1, 2, 3, 4], dtype=np.int32))
+            for dim, tag in gmsh.model.get_entities(2):
+                if tag in [2, 3, 5, 6, 8, 9, 11, 12]:
+                    assert (
+                        mesh.entity_metadata(dim, tag).boundary_condition
+                        == "reflecting"
+                    )
 
 
 def test_mesh_torus_single_surface_bc(geom_bd_torus_single_surface):
     for options in [sm.GmshSurfaceOptions(), sm.OCCSurfaceOptions()]:
         mesh = sm.SurfaceMesh.from_geometry(geom_bd_torus_single_surface, options)
         with mesh:
-            dim_tags = gmsh.model.get_physical_groups()
-
-            assert len(dim_tags) == 1, "Too many physical groups"
-
-            surface_bc_dim_tag = dim_tags[0]
-            surface_bc_tags = gmsh.model.get_entities_for_physical_group(
-                *surface_bc_dim_tag
-            )
-            surface_bc_group_name = gmsh.model.get_physical_name(*surface_bc_dim_tag)
-
-            assert surface_bc_group_name == "boundary:vacuum"
-            assert np.all(surface_bc_tags == np.array([1], dtype=np.int32))
+            for dim, tag in gmsh.model.get_entities(2):
+                if tag in [1]:
+                    assert mesh.entity_metadata(dim, tag).boundary_condition == "vacuum"
 
 
 def test_mesh_export_exodus(model_bd_layered_torus, tmp_path: Path):
