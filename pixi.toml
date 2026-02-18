@@ -17,7 +17,7 @@ stubgen-pyx = ">=0.1.4, <0.2"
 [feature.docs.pypi-dependencies]
 sphinx-github-style = ">=1.2.2, <2"
 sphinx-autobuild = ">=2025.8.25, <2026"
-shibuya = ">=2025.8.16, <2026"
+shibuya = "==2026.1.9"
 sphinx-tabs = ">=3.4.7, <4"
 
 [feature.docs.dependencies]
