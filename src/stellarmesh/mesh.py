@@ -306,6 +306,7 @@ class Mesh:
     """
 
     _mesh_filename: str
+    _ref_count: int = 0
 
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
@@ -321,19 +322,30 @@ class Mesh:
 
     def __enter__(self):
         """Enter mesh context, setting gmsh commands to operate on this mesh."""
-        if not gmsh.is_initialized():
+        if self._ref_count == 0:
+            if gmsh.is_initialized():
+                raise RuntimeError("Gmsh is already initialized on another model.")
             gmsh.initialize()
+            gmsh.option.set_number(
+                "General.Terminal",
+                1 if logger.getEffectiveLevel() <= logging.INFO else 0,
+            )
 
-        gmsh.option.set_number(
-            "General.Terminal",
-            1 if logger.getEffectiveLevel() <= logging.INFO else 0,
-        )
-        gmsh.open(self._mesh_filename)
+        self._ref_count += 1
+
+        mesh_path = Path(self._mesh_filename)
+        if mesh_path.exists() and mesh_path.stat().st_size > 0:
+            gmsh.open(self._mesh_filename)
+        else:
+            gmsh.clear()
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Cleanup (finalize) gmsh."""
-        gmsh.finalize()
+        self._ref_count -= 1
+        if self._ref_count == 0:
+            gmsh.finalize()
 
     def _save_changes(self, *, save_all: bool = True):
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
