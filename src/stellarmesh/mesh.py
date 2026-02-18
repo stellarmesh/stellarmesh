@@ -226,21 +226,22 @@ class EntityMetadata:
     _tag: int
 
     def _get_metadata_group(self, *, create_if_missing: bool = True) -> Optional[int]:
-        self._mesh._check_is_initialized()
-        physical_groups = gmsh.model.get_physical_groups_for_entity(
-            self._dim, self._tag
-        )
-        for pg in physical_groups:
-            entities = gmsh.model.get_entities_for_physical_group(self._dim, pg)
-            if len(entities) == 1 and entities[0] == self._tag:
-                return pg
-        if not create_if_missing:
-            raise RuntimeError(
-                f"Entity ({self._dim}, {self._tag}) has no metadata group"
+        with self._mesh:
+            physical_groups = gmsh.model.get_physical_groups_for_entity(
+                self._dim, self._tag
             )
+            for pg in physical_groups:
+                entities = gmsh.model.get_entities_for_physical_group(self._dim, pg)
+                if len(entities) == 1 and entities[0] == self._tag:
+                    return pg
+            if not create_if_missing:
+                raise RuntimeError(
+                    f"Entity ({self._dim}, {self._tag}) has no metadata group"
+                )
 
-        pg = gmsh.model.add_physical_group(self._dim, [self._tag], self._tag)
-        return pg
+            pg = gmsh.model.add_physical_group(self._dim, [self._tag], self._tag)
+            self._mesh._save_changes()
+            return pg
 
     def __getattr__(self, name):
         """EntityMetadata getter."""
@@ -248,38 +249,48 @@ class EntityMetadata:
             return None
         type_hints = get_type_hints(self)
         metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
-        url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
-        data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
-        if name not in data or data.get(name) == "None" or name not in type_hints:
-            return None
-        ret = type_hints.get(name)(data.get(name))  # pyright: ignore[reportOptionalCall]
-        logger.debug(
-            f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
-        )
-        return ret
+        with self._mesh:
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+            data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+            if name not in type_hints:
+                raise AttributeError(
+                    f"{self.__class__.__name__} has no attribute {name}."
+                )
+            if name not in data or data.get(name) == "None" or name not in type_hints:
+                return None
+            ret = type_hints.get(name)(data.get(name))  # pyright: ignore[reportOptionalCall]
+            logger.debug(
+                f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
+            )
+            return ret
 
     def __setattr__(self, name, value):
         """EntityMetadata setter."""
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
-        self._mesh._check_is_initialized()
-        metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
-        url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
-        if url_str != "":
-            data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
-        else:
-            data = {"tag": self._tag}
-        data[name] = value
-        gmsh.model.remove_physical_groups([(self._dim, metadata_group)])
-        new_url_str = urlencode(data)
-        gmsh.model.add_physical_group(
-            self._dim, [self._tag], metadata_group, new_url_str
-        )
-        logger.debug(
-            f"Settings metadata dim={self._dim}, tag={self._tag},name={name}: {value}"
-        )
-        self._mesh._save_changes()
+        with self._mesh:
+            metadata_group: int = self._get_metadata_group(create_if_missing=True)  # type: ignore
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+
+            if url_str != "":
+                data: dict[str, Any] = {k: v[0] for k, v in parse_qs(url_str).items()}
+            else:
+                data = {"tag": self._tag}
+            if name not in get_type_hints(self):
+                raise AttributeError(
+                    f"{self.__class__.__name__} has no attribute {name}."
+                )
+            data[name] = value
+            gmsh.model.remove_physical_groups([(self._dim, metadata_group)])
+            new_url_str = urlencode(data)
+            gmsh.model.add_physical_group(
+                self._dim, [self._tag], metadata_group, new_url_str
+            )
+            logger.debug(
+                f"Settings metadata dim={self._dim}, tag={self._tag},name={name}: {value}"
+            )
+            self._mesh._save_changes()
 
 
 @dataclass(kw_only=True)
@@ -330,14 +341,13 @@ class Mesh:
                 "General.Terminal",
                 1 if logger.getEffectiveLevel() <= logging.INFO else 0,
             )
+            mesh_path = Path(self._mesh_filename)
+            if mesh_path.exists() and mesh_path.stat().st_size > 0:
+                gmsh.open(self._mesh_filename)
+            else:
+                gmsh.clear()
 
         self._ref_count += 1
-
-        mesh_path = Path(self._mesh_filename)
-        if mesh_path.exists() and mesh_path.stat().st_size > 0:
-            gmsh.open(self._mesh_filename)
-        else:
-            gmsh.clear()
 
         return self
 

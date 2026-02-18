@@ -24,6 +24,22 @@ from .test_geometry import (
 )
 
 
+def test_entity_metadata(model_bd_sphere):
+    geom = sm.Geometry(model_bd_sphere, material_names=[""])
+    mesh = sm.SurfaceMesh.from_geometry(
+        geom,
+        sm.OCCSurfaceOptions(tol_angular_deg=0.5),
+    )
+
+    mesh.entity_metadata(2, 1).forward_volume  # noqa: B018
+    mesh.entity_metadata(2, 1).forward_volume = 10
+    assert mesh.entity_metadata(2, 1).forward_volume == 10
+    with pytest.raises(AttributeError, match=r".*has no attribute invalid_attrib.*"):
+        mesh.entity_metadata(2, 1).invalid_attrib  # noqa: B018
+    with pytest.raises(AttributeError, match=r".*has no attribute invalid_attrib.*"):
+        mesh.entity_metadata(2, 1).invalid_attrib = 10
+
+
 @pytest.mark.parametrize(
     "model_name,num_elements_occ,num_elements_gmsh",
     [
