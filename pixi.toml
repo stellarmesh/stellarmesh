@@ -4,7 +4,6 @@ channels = ["conda-forge"]
 name = "stellarmesh"
 platforms = ["linux-64"]
 
-
 [dependencies]
 python = ">=3.11"
 python-gmsh = ">=4"

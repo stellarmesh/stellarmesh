@@ -9,12 +9,12 @@ desc: Mesh class wraps Gmsh functionality for geometry meshing.
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-import shutil
 from pathlib import Path
 from typing import Any, Literal, Optional, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
@@ -261,7 +261,8 @@ class EntityMetadata:
                 return None
             ret = type_hints.get(name)(data.get(name))  # pyright: ignore[reportOptionalCall]
             logger.debug(
-                f"Returning metadata dim={self._dim}, tag={self._tag},name={name}: {ret}"
+                "Returning metadata"
+                + f"dim={self._dim}, tag={self._tag}, name={name}: {ret}"
             )
             return ret
 
@@ -289,7 +290,8 @@ class EntityMetadata:
                 self._dim, [self._tag], metadata_group, new_url_str
             )
             logger.debug(
-                f"Settings metadata dim={self._dim}, tag={self._tag},name={name}: {value}"
+                "Setting metadata"
+                + f"dim={self._dim}, tag={self._tag}, name={name}: {value}"
             )
             self._mesh._save_changes()
 
@@ -366,6 +368,7 @@ class Mesh:
         gmsh.write(self._mesh_filename)
 
     def __deepcopy__(self, memo):
+        """Return a deep copy of this mesh."""
         return Mesh(self._mesh_filename)
 
     def write(
