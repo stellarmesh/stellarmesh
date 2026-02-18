@@ -564,7 +564,7 @@ class DAGMCModel(MOABModel):
         input_filename: PathLike,
         output_filename: PathLike,
         binary_path: str = "make_watertight",
-    ):
+    ) -> bool:
         """Make mesh watertight.
 
         Args:
@@ -579,21 +579,67 @@ class DAGMCModel(MOABModel):
         )
 
     @staticmethod
-    def overlap_check(
+    def check_overlap(
         input_filename: PathLike,
         binary_path: str = "overlap_check",
-    ):
+        points_per_edge: int = 0,
+        num_threads: int = 1,
+    ) -> bool:
         """Check mesh for overlaps.
 
         Args:
             input_filename: Input .h5m filename.
             binary_path: Path to overlap_check or default to find in path. Defaults to
             "overlap_check".
+            points_per_edge: Number of evenly-spaced points to test on each triangle
+                edge. If points_per_edge=0, only triangle vertex locations are checked.
+                Defaults to 0.
+            num_threads: Number of threads.
+
+        Returns:
+            True if no overlaps are found, else False.
         """
-        subprocess.run(
-            [binary_path, str(input_filename)],
+        out = subprocess.run(
+            [
+                binary_path,
+                str(input_filename),
+                "-p",
+                str(points_per_edge),
+                "-t",
+                str(num_threads),
+            ],
+            capture_output=True,
+            text=True,
             check=True,
         )
+        return "No overlaps were found." in out.stdout.splitlines()
+
+    @staticmethod
+    def check_watertight(
+        input_filename: PathLike,
+        binary_path: str = "check_watertight",
+    ):
+        """Check mesh for watertightness.
+
+        Args:
+            input_filename: Input .h5m filename.
+            binary_path: Path to overlap_check or default to find in path. Defaults to
+            "check_watertight".
+
+        Returns:
+            True if mesh is watertight, else False.
+        """
+        out = subprocess.run(
+            [binary_path, str(input_filename)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output_lines = out.stdout.splitlines()
+        for line in output_lines:
+            if ("leaky surface ids=" in line) or ("leaky volume ids=" in line):
+                return line.strip().endswith("=")
+        return False
 
     @classmethod
     def from_mesh(
