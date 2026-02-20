@@ -5,8 +5,6 @@ import pytest
 
 import stellarmesh as sm
 
-from .test_geometry import model_bd_layered_torus  # noqa: F401
-
 logger = logging.getLogger(__name__)
 
 
