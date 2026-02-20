@@ -100,3 +100,17 @@ def geom_bd_torus_single_surface():
     face: bd.Face = bd.Solid.make_torus(10, 1).face()  # type: ignore
     geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["vacuum"])
     return geom
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically applies markers based on test location and name.
+
+    Called after test collection, before execution.
+    """
+    for item in items:
+        if "/integration/" in str(item.fspath):
+            item.add_marker(pytest.mark.integration)
+
+        # Auto-mark tests in unit/ directory
+        if "/unit/" in str(item.fspath):
+            item.add_marker(pytest.mark.unit)

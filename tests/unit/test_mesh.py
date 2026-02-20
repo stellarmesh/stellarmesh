@@ -10,7 +10,7 @@ import gmsh
 import pytest
 
 import stellarmesh as sm
-from . import resources
+from .. import resources
 
 
 class TestMeshMetadataAndImmutability:
