@@ -17,7 +17,7 @@ import pytest
 
 import stellarmesh as sm
 
-from . import resources
+from .. import resources
 
 RELATIVE_TOLERANCE_PERCENT = 2.5 / 100
 
