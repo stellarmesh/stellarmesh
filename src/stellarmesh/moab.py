@@ -240,9 +240,12 @@ class DAGMCSurface(DAGMCEntitySet):
         parents = self.model._core.get_parent_meshsets(self.handle)
         for parent in parents:
             if parent not in sense_data:
-                # REVIEW (akoen): pymoab seems not to have a remove_parent method.
+                # REVIEW (akoen): remove_parent_child only implemented in MOAB 5.6.0
+                if hasattr(self.model._core, "remove_parent_child"):
+                    self.model._core.remove_parent_child(parent.handle, self.handle)  # pyright: ignore[reportAttributeAccessIssue]
                 logger.warning(
-                    f"Surface has existing parent {parent} that cannot be removed."
+                    f"Surface has existing parent {parent} that cannot be removed in "
+                    + "this version of MOAB."
                 )
         # Establish parent-child relationships
         for vol in volumes:
