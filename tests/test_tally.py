@@ -45,7 +45,7 @@ class Model(ABC):
         settings.particles = 500
         settings.run_mode = "fixed source"
         settings.source = self.source
-        settings.seed = random.randint(0, 2**31 - 1)
+        settings.seed = 42
         return settings
 
     @abstractmethod

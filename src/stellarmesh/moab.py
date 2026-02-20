@@ -465,7 +465,7 @@ class MOABModel:
         element_types, _, node_tags_list = gmsh.model.mesh.get_elements(dim, tag)
         all_new_handles = []
 
-        for elem_type, node_tags in zip(element_types, node_tags_list):
+        for elem_type, node_tags in zip(element_types, node_tags_list, strict=True):
             # Map Gmsh types to MOAB types
             if elem_type == 2:  # Triangle
                 moab_type, nodes_per_elem = pymoab.types.MBTRI, 3
@@ -479,8 +479,8 @@ class MOABModel:
             conn = np.array(
                 [node_tag_map[t] for t in node_tags], dtype=np.uint64
             ).reshape(-1, nodes_per_elem)
-            for c in conn:
-                all_new_handles.append(self._core.create_element(moab_type, c))
+
+            all_new_handles = [self._core.create_element(moab_type, c) for c in conn]
 
         return Range(all_new_handles)
 
@@ -746,7 +746,7 @@ class DAGMCModel(MOABModel):
 
         self._core.add_entities(surface_set.handle, triangles)
         # Add vertices to the set as well (topologically required by some tools?)
-        adj_verts = self._core.get_adjacencies(triangles, 0, False)
+        adj_verts = self._core.get_adjacencies(triangles, 0, create_if_missing=False)
         self._core.add_entities(surface_set.handle, adj_verts)
 
     def _create_volume_friend_for_lonely_surfaces(
