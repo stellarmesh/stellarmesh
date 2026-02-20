@@ -440,6 +440,47 @@ class MOABModel:
             self.root_set, pymoab.types.MBTRI, recur=True
         )
 
+    def _add_nodes(self) -> dict[int, int]:
+        """Generic node addition logic shared by all MOAB-based models."""
+        node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+        if len(node_tags) != len(np.unique(node_tags)):
+            raise ValueError("Duplicate node tags found.")
+        if np.isnan(coords).any():
+            raise ValueError("Mesh coordinates contain NaNs.")
+        if np.isinf(coords).any():
+            raise ValueError("Mesh coordinates contain infinite values.")
+
+        moab_vertices = self._core.create_vertices(coords)
+        self._core.tag_set_data(self.id_tag, moab_vertices, node_tags.astype(np.int32))  # pyright: ignore[reportAttributeAccessIssue]
+
+        return dict(zip(node_tags, moab_vertices, strict=True))
+
+    def _create_elements(
+        self, dim: int, tag: int, node_tag_map: dict[int, int]
+    ) -> Range:
+        """Generic element creation for any dimension (2D or 3D)."""
+        element_types, _, node_tags_list = gmsh.model.mesh.get_elements(dim, tag)
+        all_new_handles = []
+
+        for elem_type, node_tags in zip(element_types, node_tags_list):
+            # Map Gmsh types to MOAB types
+            if elem_type == 2:  # Triangle
+                moab_type, nodes_per_elem = pymoab.types.MBTRI, 3
+            elif elem_type == 4:  # Tet
+                moab_type, nodes_per_elem = pymoab.types.MBTET, 4
+            elif elem_type == 5:  # Hex
+                moab_type, nodes_per_elem = pymoab.types.MBHEX, 8
+            else:
+                continue
+
+            conn = np.array(
+                [node_tag_map[t] for t in node_tags], dtype=np.uint64
+            ).reshape(-1, nodes_per_elem)
+            for c in conn:
+                all_new_handles.append(self._core.create_element(moab_type, c))
+
+        return Range(all_new_handles)
+
     @classmethod
     def from_mesh(cls, mesh: Mesh) -> MOABModel:
         """Create MOAB model from mesh.
@@ -478,7 +519,7 @@ class MOABModel:
         Args:
             filename: Filename with format-appropriate extension.
         """
-        logger.info(f"Writing DAGMC mesh to {filename!s}")
+        logger.info(f"Writing MOAB mesh to {filename!s}")
         self._core.write_file(str(filename))
 
 
@@ -495,7 +536,6 @@ class DAGMCModel(MOABModel):
             Group object.
         """
         group = DAGMCGroup(self, self._core.create_meshset())
-        group.geom_dimension = 4
         group.category = "Group"
         group.name = group_name
         return group
@@ -667,24 +707,6 @@ class DAGMCModel(MOABModel):
 
             return model
 
-    def _add_nodes(self) -> dict[int, int]:
-        """Add nodes to MOAB model.
-
-        Return map from Gmsh tag to MOAB handle.
-        """
-        node_tags, coords, _ = gmsh.model.mesh.get_nodes()
-        if len(node_tags) != len(np.unique(node_tags)):
-            raise ValueError("Duplicate node tags found.")
-        if np.isnan(coords).any():
-            raise ValueError("Mesh coordinates contain NaNs.")
-        if np.isinf(coords).any():
-            raise ValueError("Mesh coordinates contain infinite values.")
-
-        moab_vertices = self._core.create_vertices(coords)
-        self._core.tag_set_data(self.id_tag, moab_vertices, node_tags.astype(np.int32))  # pyright: ignore[reportAttributeAccessIssue]
-
-        return dict(zip(node_tags, moab_vertices, strict=True))
-
     def _add_surfaces(
         self, mesh: Mesh, node_tag_map: dict[int, int]
     ) -> dict[int, DAGMCSurface]:
@@ -715,28 +737,14 @@ class DAGMCModel(MOABModel):
         self, surface_tag: int, surface_set: DAGMCSurface, node_tag_map: dict[int, int]
     ):
         """Process elements for a single surface."""
-        element_types, _, node_tags_list = gmsh.model.mesh.get_elements(2, surface_tag)
-        if len(node_tags_list[0]) == 0:
+        triangles = self._create_elements(2, surface_tag, node_tag_map)
+        if not triangles:
             raise RuntimeError(f"Surface {surface_tag} has no elements")
 
-        if len(element_types) != 1 or element_types[0] != 2:
-            raise RuntimeError(
-                f"Non-triangular element in surface {surface_tag}: {element_types}"
-            )
-
-        moab_conn_flat = np.array(
-            [node_tag_map[t] for t in node_tags_list[0]], dtype=np.uint64
-        )
-        moab_conn_2d = moab_conn_flat.reshape(-1, 3)
-
-        new_handles = np.zeros(len(moab_conn_2d), dtype=np.uint64)
-        for j, conn in enumerate(moab_conn_2d):
-            new_handles[j] = self._core.create_element(pymoab.types.MBTRI, conn)
-
-        triangles = Range(new_handles)
         self._core.add_entities(surface_set.handle, triangles)
         # Add vertices to the set as well (topologically required by some tools?)
-        self._core.add_entities(surface_set.handle, np.unique(moab_conn_flat))
+        adj_verts = self._core.get_adjacencies(triangles, 0, False)
+        self._core.add_entities(surface_set.handle, adj_verts)
 
     def _create_volume_friend_for_lonely_surfaces(
         self, surface_tag: int, surface_set: DAGMCSurface
@@ -841,3 +849,27 @@ class DAGMCModel(MOABModel):
         """
         volume_handles = self._get_entities_of_geom_dimension(3)
         return [DAGMCVolume(self, h) for h in volume_handles]
+
+
+class VolumeMeshModel(MOABModel):
+    """A MOAB model consisting of 3D volume elements, typically for tallies."""
+
+    @classmethod
+    def from_mesh(cls, mesh: Mesh) -> VolumeMeshModel:
+        """Create Volume Mesh MOAB file from mesh."""
+        core = pymoab.core.Core()
+        model = cls(core)
+        with mesh:
+            gmsh.model.mesh.removeDuplicateNodes()
+            node_map = model._add_nodes()
+
+            # Simply add all 3D elements to the root set
+            for _, tag in gmsh.model.get_entities(3):
+                elements = model._create_elements(3, tag, node_map)
+
+                # Optionally, if metadata exists to group these into MATERIAL_SET tags:
+                # if elements:
+                #     group = model._core.create_meshset()
+                #     model._core.add_entities(group, elements)
+
+        return model
