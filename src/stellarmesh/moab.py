@@ -851,11 +851,11 @@ class DAGMCModel(MOABModel):
         return [DAGMCVolume(self, h) for h in volume_handles]
 
 
-class VolumeMeshModel(MOABModel):
+class MOABVolumeModel(MOABModel):
     """A MOAB model consisting of 3D volume elements, typically for tallies."""
 
     @classmethod
-    def from_mesh(cls, mesh: Mesh) -> VolumeMeshModel:
+    def from_mesh(cls, mesh: Mesh) -> MOABVolumeModel:
         """Create Volume Mesh MOAB file from mesh."""
         core = pymoab.core.Core()
         model = cls(core)
