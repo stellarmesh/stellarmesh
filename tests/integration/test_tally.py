@@ -166,6 +166,34 @@ class NestedSpheres(Model):
 
         return openmc.Tallies([tally])
 
+    def get_extra_tallies(self, geom_type: Literal["CSG", "CAD"]) -> openmc.Tallies:
+        tallies = []
+        if geom_type == "CAD":
+            vol_mesh = sm.VolumeMesh.from_geometry(
+                self.sm_geom,
+                sm.GmshVolumeOptions(max_mesh_size=5.0),
+            )
+            with tempfile.NamedTemporaryFile(suffix=".h5m", delete=False) as f:
+                tmp_vol_mesh_path = f.name
+            sm.MOABVolumeModel.from_mesh(vol_mesh).write(tmp_vol_mesh_path)
+            umesh = openmc.UnstructuredMesh(tmp_vol_mesh_path, library="moab")
+            umesh_filter = openmc.MeshFilter(umesh)
+            umesh_tally = openmc.Tally(name="unstructured_mesh_flux")
+            umesh_tally.filters = [umesh_filter]
+            umesh_tally.scores = ["flux"]
+            tallies.append(umesh_tally)
+        return openmc.Tallies(tallies)
+
+    def check_extra_tallies(self, geom_type, sp):
+        if geom_type != "CAD":
+            return
+        tally = sp.get_tally(name="unstructured_mesh_flux")
+        mean = tally.mean.ravel()
+        assert len(mean) > 0, "Unstructured mesh tally has no bins"
+        assert not np.any(np.isnan(mean)), "Unstructured mesh tally contains NaNs"
+        assert not np.any(np.isinf(mean)), "Unstructured mesh tally contains Infs"
+        assert np.any(mean > 0), "Unstructured mesh tally is all zero"
+
     @cached_property
     def source(self):
         source = openmc.IndependentSource()
@@ -331,7 +359,6 @@ class NestedCylindersThroughHoleNX(Model):
             return
         tally = sp.get_tally(name="unstructured_mesh_flux")
         mean = tally.mean.ravel()
-        print(mean)
         assert len(mean) > 0, "Unstructured mesh tally has no bins"
         assert not np.any(np.isnan(mean)), "Unstructured mesh tally contains NaNs"
         assert not np.any(np.isinf(mean)), "Unstructured mesh tally contains Infs"
