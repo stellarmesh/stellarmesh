@@ -105,10 +105,10 @@ class TestDAGMCModel:
 
 
 class TestMOABModel:
-    def test_moabmodel_from_h5m(self):
-        solids = [bd.Solid.make_sphere(10.0)]
-        geom = sm.Geometry(solids, ["iron"])
-        mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(max_mesh_size=5))
+    def test_moabmodel_from_h5m(self, geom_bd_sphere):
+        mesh = sm.VolumeMesh.from_geometry(
+            geom_bd_sphere, sm.GmshVolumeOptions(max_mesh_size=5)
+        )
         model = sm.MOABModel.from_mesh(mesh)
 
 

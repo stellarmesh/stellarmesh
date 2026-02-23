@@ -16,14 +16,10 @@ logger = logging.getLogger(__name__)
     ],
     ids=["OCC", "Gmsh"],
 )
-def test_benchmark_mesh(model_bd_layered_torus, benchmark, mesh_options):
-    geom = sm.Geometry(
-        solids=model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
-    )
-
+def test_benchmark_mesh(geom_bd_layered_torus, benchmark, mesh_options):
     mesh = benchmark.pedantic(
         sm.SurfaceMesh.from_geometry,
-        args=(geom, mesh_options),
+        args=(geom_bd_layered_torus, mesh_options),
         rounds=3,
     )
     with mesh:

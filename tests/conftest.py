@@ -63,6 +63,44 @@ def model_bd_offsetboxes():
 
 
 @pytest.fixture
+def geom_bd_sphere(model_bd_sphere):
+    return sm.Geometry(model_bd_sphere, material_names=[""] * len(model_bd_sphere))
+
+
+@pytest.fixture
+def geom_cq_sphere(model_cq_sphere):
+    return sm.Geometry(model_cq_sphere, material_names=[""] * len(model_cq_sphere))
+
+
+@pytest.fixture
+def geom_bd_nestedspheres(model_bd_nestedspheres):
+    return sm.Geometry(
+        model_bd_nestedspheres, material_names=[""] * len(model_bd_nestedspheres)
+    )
+
+
+@pytest.fixture
+def geom_cq_nestedspheres(model_cq_nestedspheres):
+    return sm.Geometry(
+        model_cq_nestedspheres, material_names=[""] * len(model_cq_nestedspheres)
+    )
+
+
+@pytest.fixture
+def geom_bd_layered_torus(model_bd_layered_torus):
+    return sm.Geometry(
+        model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
+    )
+
+
+@pytest.fixture
+def geom_cq_layered_torus(model_cq_layered_torus):
+    return sm.Geometry(
+        model_cq_layered_torus, material_names=[""] * len(model_cq_layered_torus)
+    )
+
+
+@pytest.fixture
 def geom_imprintedboxes(model_bd_offsetboxes):
     # Removed duplication: this was defined in both test_geometry.py and test_mesh.py
     geom = sm.Geometry(

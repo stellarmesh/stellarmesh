@@ -55,8 +55,5 @@ class TestGeometryImportExport:
 
 
 class TestGeometryOperations:
-    def test_geometry_imprint(self, model_bd_layered_torus):
-        geom = sm.Geometry(
-            model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
-        )
-        geom.imprint()
+    def test_geometry_imprint(self, geom_bd_layered_torus):
+        geom_bd_layered_torus.imprint()

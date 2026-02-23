@@ -15,10 +15,9 @@ from .. import resources
 
 class TestMeshMetadataAndImmutability:
     @pytest.fixture
-    def mesh_sphere_occ(self, model_bd_sphere):
-        geom = sm.Geometry(model_bd_sphere, material_names=[""])
+    def mesh_sphere_occ(self, geom_bd_sphere):
         mesh = sm.SurfaceMesh.from_geometry(
-            geom,
+            geom_bd_sphere,
             sm.OCCSurfaceOptions(tol_angular_deg=0.5),
         )
         return copy.deepcopy(mesh)
@@ -51,25 +50,24 @@ class TestMeshMetadataAndImmutability:
 
 class TestSurfaceMesh:
     @pytest.mark.parametrize(
-        "model_name,num_elements_occ,num_elements_gmsh",
+        "geom_name,num_elements_occ,num_elements_gmsh",
         [
-            ("model_bd_sphere", 306, 850),
-            ("model_cq_sphere", 306, 850),
-            ("model_bd_layered_torus", 5408, 2814),
-            ("model_cq_layered_torus", 5408, 2814),
-            ("model_bd_nestedspheres", 612, 1086),
-            ("model_cq_nestedspheres", 612, 1086),
+            ("geom_bd_sphere", 306, 850),
+            ("geom_cq_sphere", 306, 850),
+            ("geom_bd_layered_torus", 5408, 2814),
+            ("geom_cq_layered_torus", 5408, 2814),
+            ("geom_bd_nestedspheres", 612, 1086),
+            ("geom_cq_nestedspheres", 612, 1086),
         ],
     )
     def test_surface_mesh_num_elements(
         self,
-        model_name: str,
+        geom_name: str,
         num_elements_occ: int,
         num_elements_gmsh: int,
         request: pytest.FixtureRequest,
     ):
-        model = request.getfixturevalue(model_name)
-        geom = sm.Geometry(model, material_names=[""] * len(model))
+        geom = request.getfixturevalue(geom_name)
 
         mesh_occ = sm.SurfaceMesh.from_geometry(
             geom,
@@ -79,7 +77,7 @@ class TestSurfaceMesh:
             num_elements = len(gmsh.model.mesh.get_elements(2, -1)[1][0])
         assert num_elements == num_elements_occ, (
             f"Number of elements in OCC mesh ({num_elements}) does not match expected "
-            f"({num_elements_occ}) for model {model_name}. Mesh: {mesh_occ._mesh_filename}"
+            f"({num_elements_occ}) for model {geom_name}. Mesh: {mesh_occ._mesh_filename}"
         )
 
         mesh_gmsh = sm.SurfaceMesh.from_geometry(
@@ -90,7 +88,7 @@ class TestSurfaceMesh:
             num_elements = len(gmsh.model.mesh.get_elements(2, -1)[1][0])
         assert num_elements == num_elements_gmsh, (
             f"Number of elements in GMSH mesh ({num_elements}) does not match expected "
-            f"({num_elements_gmsh}) for model {model_name}. Mesh: {mesh_gmsh._mesh_filename}"
+            f"({num_elements_gmsh}) for model {geom_name}. Mesh: {mesh_gmsh._mesh_filename}"
         )
 
     def test_mesh_geom_imprintedboxes(self, geom_imprintedboxes):
@@ -133,21 +131,20 @@ class TestSurfaceMesh:
 
 class TestVolumeMesh:
     @pytest.mark.parametrize(
-        "model_name,num_elements_gmsh",
+        "geom_name,num_elements_gmsh",
         [
-            ("model_bd_sphere", 2648),
-            ("model_bd_layered_torus", 6501),
-            ("model_bd_nestedspheres", 2828),
+            ("geom_bd_sphere", 2648),
+            ("geom_bd_layered_torus", 6501),
+            ("geom_bd_nestedspheres", 2828),
         ],
     )
     def test_volume_mesh_num_elements(
         self,
-        model_name: str,
+        geom_name: str,
         num_elements_gmsh: int,
         request: pytest.FixtureRequest,
     ):
-        model = request.getfixturevalue(model_name)
-        geom = sm.Geometry(model, material_names=[""] * len(model))
+        geom = request.getfixturevalue(geom_name)
 
         mesh = sm.VolumeMesh.from_geometry(
             geom,
@@ -157,7 +154,7 @@ class TestVolumeMesh:
             num_elements = len(gmsh.model.mesh.get_elements(3, -1)[1][0])
         assert num_elements_gmsh == num_elements, (
             f"Number of elements in volume mesh ({num_elements}) does not match expected "
-            f"({num_elements_gmsh}) for model {model_name}. Mesh: {mesh._mesh_filename}"
+            f"({num_elements_gmsh}) for model {geom_name}. Mesh: {mesh._mesh_filename}"
         )
 
     def test_mesh_volume_imprintedboxes(self, geom_imprintedboxes):
@@ -177,12 +174,10 @@ class TestVolumeMesh:
                 f"Mesh: {mesh._mesh_filename}"
             )
 
-    def test_mesh_export_exodus(self, model_bd_layered_torus, tmp_path: Path):
-        geom = sm.Geometry(
-            model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
-        )
+    def test_mesh_export_exodus(self, geom_bd_layered_torus, tmp_path: Path):
         mesh = sm.VolumeMesh.from_geometry(
-            geom, sm.GmshVolumeOptions(min_mesh_size=0.5, max_mesh_size=2)
+            geom_bd_layered_torus,
+            sm.GmshVolumeOptions(min_mesh_size=0.5, max_mesh_size=2),
         )
         mesh.write(tmp_path / "out.exo", use_meshio=True)
 
@@ -220,11 +215,8 @@ class TestMeshUtilities:
         assert "No overlaps were found" in check_overlap(2.5)
         assert "Overlap Location:" in check_overlap(5)
 
-    def test_gmsh_threads(self, model_bd_layered_torus, tmp_path: Path):
-        geom = sm.Geometry(
-            model_bd_layered_torus, material_names=[""] * len(model_bd_layered_torus)
-        )
+    def test_gmsh_threads(self, geom_bd_layered_torus, tmp_path: Path):
         mesh = sm.SurfaceMesh.from_geometry(
-            geom,
+            geom_bd_layered_torus,
             sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2, num_threads=8),
         )
