@@ -34,4 +34,4 @@ jobs:
         env:
           OPENMC_CROSS_SECTIONS: ${{ github.workspace }}/cross_sections.xml
         run: |
-          pixi run -e ci test
+          pixi run -e ci test-ci

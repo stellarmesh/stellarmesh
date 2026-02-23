@@ -62,7 +62,7 @@ openmc_data_downloader = "*"
 
 [feature.ci.tasks]
 download-xs = "openmc_data_downloader -l ENDFB-7.1-NNDC -i Fe56 Be9 H2 H3"
-test = { cmd = "pytest --log-cli-level=INFO --ignore tests/test_mesh_benchmark.py", depends-on = [
+test-ci = { cmd = "pytest -m 'not benchmark' --log-cli-level=INFO", depends-on = [
     "download-xs",
 ] }
 
