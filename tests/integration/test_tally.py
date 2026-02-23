@@ -49,9 +49,23 @@ class Model(ABC):
         return settings
 
     @abstractmethod
-    def get_tallies(self, geom_type: Literal["CSG", "CAD"]) -> openmc.Tallies:
-        """Generate the tallies."""
+    def get_comparison_tallies(
+        self, geom_type: Literal["CSG", "CAD"]
+    ) -> openmc.Tallies:
+        """Generate the tallies for comparison between CAG and CAD."""
         ...
+
+    def get_extra_tallies(self, geom_type: Literal["CSG", "CAD"]) -> openmc.Tallies:
+        """Generate the extra tallies."""
+        return openmc.Tallies(None)
+
+    def check_extra_tallies(
+        self,
+        geom_type: Literal["CSG", "CAD"],
+        sp: openmc.StatePoint,
+    ) -> None:
+        """Hook for model-specific post-run tally checks."""
+        return None
 
     @cached_property
     @abstractmethod
@@ -121,7 +135,9 @@ class Model(ABC):
         if self.materials:
             model.materials = self.materials
         model.settings = self.settings
-        model.tallies = self.get_tallies(geom_type)
+        model.tallies = self.get_comparison_tallies(geom_type) + self.get_extra_tallies(
+            geom_type
+        )
         return model
 
 
@@ -142,7 +158,7 @@ class NestedSpheres(Model):
         mat2.set_density("g/cm3", 1)
         return openmc.Materials([mat1, mat2])
 
-    def get_tallies(self, geom_type):
+    def get_comparison_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials)
         tally = openmc.Tally(name="flux_tally")
         tally.filters = [mat_filter]
@@ -195,7 +211,7 @@ class NestedCylinders(Model):
         mat2.set_density("g/cm3", 1)
         return openmc.Materials([mat1, mat2])
 
-    def get_tallies(self, geom_type):
+    def get_comparison_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials)
         tally = openmc.Tally(name="flux_tally")
         tally.filters = [mat_filter]
@@ -279,13 +295,47 @@ class NestedCylindersThroughHoleNX(Model):
 
         return openmc.Materials([mat_plasma, mat_b1, mat_b2])
 
-    def get_tallies(self, geom_type):
+    def get_comparison_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials)
         tally = openmc.Tally(name="flux_tally")
         tally.filters = [mat_filter]
         tally.scores = ["flux"]
 
         return openmc.Tallies([tally])
+
+    def get_extra_tallies(
+        self, geom_type: Literal["CSG"] | Literal["CAD"]
+    ) -> openmc.Tallies:
+        tallies = []
+        if geom_type == "CAD":
+            """Load the pre-generated unstructured volume mesh."""
+            with importlib.resources.path(
+                resources, "concentric-cylinders-with-through-hole-vol.msh"
+            ) as vol_mesh_path:
+                with tempfile.NamedTemporaryFile(suffix=".h5m", delete=False) as f:
+                    tmp_vol_mesh_path = f.name
+                sm.MOABVolumeModel.from_mesh(sm.Mesh(vol_mesh_path)).write(
+                    tmp_vol_mesh_path
+                )
+                umesh = openmc.UnstructuredMesh(tmp_vol_mesh_path, library="moab")
+                umesh_filter = openmc.MeshFilter(umesh)
+                umesh_tally = openmc.Tally(name="unstructured_mesh_flux")
+                umesh_tally.filters = [umesh_filter]
+                umesh_tally.scores = ["flux"]
+                tallies.append(umesh_tally)
+
+        return openmc.Tallies(tallies)
+
+    def check_extra_tallies(self, geom_type, sp):
+        if geom_type != "CAD":
+            return
+        tally = sp.get_tally(name="unstructured_mesh_flux")
+        mean = tally.mean.ravel()
+        print(mean)
+        assert len(mean) > 0, "Unstructured mesh tally has no bins"
+        assert not np.any(np.isnan(mean)), "Unstructured mesh tally contains NaNs"
+        assert not np.any(np.isinf(mean)), "Unstructured mesh tally contains Infs"
+        assert np.any(mean > 0), "Unstructured mesh tally is all zero"
 
     @cached_property
     def source(self):
@@ -342,10 +392,8 @@ class NestedCylindersThroughHoleNX(Model):
         ) as path:
             msh = sm.SurfaceMesh(path)
             with msh:
-                msh.entity_metadata(2, 9).boundary_condition = "vacuum"  # Outer radius
-                msh.entity_metadata(
-                    2, 13
-                ).boundary_condition = "vacuum"  # Through hole outer radius
+                msh.entity_metadata(2, 9).boundary_condition = "vacuum"
+                msh.entity_metadata(2, 13).boundary_condition = "vacuum"
                 z_surfaces = [4, 1, 10, 5, 2, 11]
                 for surf in z_surfaces:
                     msh.entity_metadata(2, surf).boundary_condition = "reflecting"
@@ -365,7 +413,7 @@ class Torus(Model):
         mat1.set_density("g/cm3", 1)
         return openmc.Materials([mat1])
 
-    def get_tallies(self, geom_type):
+    def get_comparison_tallies(self, geom_type):
         mat_filter = openmc.MaterialFilter(self.materials[0])
         tally = openmc.Tally(name="mat1_flux_tally")
         tally.filters = [mat_filter]
@@ -428,7 +476,7 @@ class TorusSurface(Model):
     def materials(self):
         return None
 
-    def get_tallies(self, geom_type):
+    def get_comparison_tallies(self, geom_type):
         surface_ids = (
             list(self.geom_csg.get_all_surfaces())
             if type == "CSG"
@@ -500,7 +548,9 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
         openmc.StatePoint(output_file_from_cad) as sp_from_cad,
     ):
         for csg_tally, dagmc_tally in zip(
-            csg_model.tallies, cad_model.tallies, strict=True
+            model.get_comparison_tallies("CSG"),
+            model.get_comparison_tallies("CAD"),
+            strict=True,
         ):
             csg_tally_result = sp_from_csg.get_tally(name=csg_tally.name)
             cad_tally_result = sp_from_cad.get_tally(name=dagmc_tally.name)
@@ -522,3 +572,6 @@ def test_model(model_cls: Type[Model], tmp_path: Path):
                 ), (
                     "CSG and CAD tallies are too close, have we loaded the same data twice?"
                 )
+
+        model.check_extra_tallies("CAD", sp_from_cad)
+        model.check_extra_tallies("CSG", sp_from_csg)
