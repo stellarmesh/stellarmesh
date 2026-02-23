@@ -60,3 +60,10 @@ pydocstyle.convention = "google"
 
 [tool.pyright]
 pythonVersion = "3.11"
+
+[tool.pytest]
+markers = [
+    "unit: unit test.",
+    "integration: integration test.",
+    "benchmark: mesh backend benchmark.",
+]

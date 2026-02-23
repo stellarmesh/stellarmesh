@@ -12,6 +12,7 @@ moab = "*"
 
 [pypi-dependencies]
 stellarmesh = { path = ".", editable = true }
+meshio = { version = ">=5.3.5, <6", extras = ["all"] }
 
 [feature.docs.pypi-dependencies]
 sphinx-github-style = ">=1.2.2, <2"
@@ -47,6 +48,13 @@ pyvista = ">=0.47.0,<0.48"
 trame-vuetify = ">=3.2.1,<4"
 nest-asyncio2 = ">=1.7.2,<2"
 ipywidgets = ">=8.1.8,<9"
+
+[feature.dev.tasks]
+test = { cmd = "pytest -m 'not benchmark' -s --log-cli-level=INFO" }
+test-unit = { cmd = "pytest -m 'unit' -s --log-cli-level=INFO" }
+test-integration = { cmd = "pytest -m 'integration' -s --log-cli-level=INFO" }
+test-cov = { cmd = "pytest -m 'not benchmark' -s --log-cli-level=INFO --cov=stellarmesh --cov-report xml:cov.xml" }
+test-benchmark = { cmd = "pytest -m 'benchmark' -s --log-cli-level=INFO" }
 
 
 [feature.ci.pypi-dependencies]

@@ -111,6 +111,8 @@ def pytest_collection_modifyitems(config, items):
         if "/integration/" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
 
-        # Auto-mark tests in unit/ directory
         if "/unit/" in str(item.fspath):
             item.add_marker(pytest.mark.unit)
+
+        if "/benchmark/" in str(item.fspath):
+            item.add_marker(pytest.mark.benchmark)
