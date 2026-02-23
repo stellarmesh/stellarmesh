@@ -110,3 +110,31 @@ class TestMOABModel:
         geom = sm.Geometry(solids, ["iron"])
         mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(max_mesh_size=5))
         model = sm.MOABModel.from_mesh(mesh)
+
+
+class TestMOABVolumeModel:
+    @pytest.fixture(scope="class")
+    def volume_model(self):
+        solid = bd.Solid.make_sphere(10.0)
+        geom = sm.Geometry([solid], [""])
+        mesh = sm.VolumeMesh.from_geometry(geom, sm.GmshVolumeOptions(max_mesh_size=5))
+        return sm.MOABVolumeModel.from_mesh(mesh)
+
+    def test_has_tets(self, volume_model):
+        tets = volume_model.tets
+        assert isinstance(tets, Range)
+        assert not tets.empty()
+
+    def test_no_triangles_in_root(self, volume_model):
+        tris = volume_model.triangles
+        assert tris.empty()
+
+    def test_write_and_read(self, volume_model, tmp_path):
+        out = tmp_path / "volume.h5m"
+        volume_model.write(out)
+        assert out.exists()
+        reloaded = sm.MOABVolumeModel(out)
+        assert not reloaded.tets.empty()
+
+    def test_tet_count_reasonable(self, volume_model):
+        assert len(volume_model.tets) > 100

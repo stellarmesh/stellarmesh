@@ -15,7 +15,7 @@ from .mesh import (
     SurfaceMesh,
     VolumeMesh,
 )
-from .moab import DAGMCModel, DAGMCSurface, DAGMCVolume, MOABModel
+from .moab import DAGMCModel, DAGMCSurface, DAGMCVolume, MOABModel, MOABVolumeModel
 
 __all__ = [
     "DAGMCModel",
@@ -27,6 +27,7 @@ __all__ = [
     "GmshVolumeAlgo",
     "GmshVolumeOptions",
     "MOABModel",
+    "MOABVolumeModel",
     "Mesh",
     "OCCSurfaceAlgo",
     "OCCSurfaceOptions",

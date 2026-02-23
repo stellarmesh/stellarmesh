@@ -868,11 +868,6 @@ class MOABVolumeModel(MOABModel):
 
             # Simply add all 3D elements to the root set
             for _, tag in gmsh.model.get_entities(3):
-                elements = model._create_elements(3, tag, node_map)
-
-                # Optionally, if metadata exists to group these into MATERIAL_SET tags:
-                # if elements:
-                #     group = model._core.create_meshset()
-                #     model._core.add_entities(group, elements)
+                model._create_elements(3, tag, node_map)
 
         return model
