@@ -4,6 +4,7 @@
 
    install
    tutorials
+   format
    api/index
 
 .. include:: ../README.rst
