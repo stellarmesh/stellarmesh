@@ -365,6 +365,7 @@ class Mesh:
 
     def _save_changes(self, *, save_all: bool = True):
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
+        gmsh.option.set_number("Mesh.MshFileVersion", 4.1)
         gmsh.write(self._mesh_filename)
 
     def __deepcopy__(self, memo):
