@@ -550,7 +550,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/matplotlib-base-3.10.8-py314h1194b4b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mesalib-25.0.5-h57bcd07_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/metis-5.1.0-hd0bcaf9_1007.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.6.0-nompi_notempest_ha12ee2e_100.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.5.1-nompi_tempest_py314he2b36d2_11.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mpg123-1.32.9-hc50e24c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/msgpack-python-1.1.2-py314h9891dd4_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda
@@ -589,6 +589,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/svt-av1-4.0.1-hecca717_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2022.3.0-hb700be7_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-devel-2022.3.0-h51de99f_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/tempest-remap-2.2.0-h397758c_8.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/unicodedata2-17.0.1-py314h5bd0f2a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/utfcpp-4.09-ha770c72_0.conda
@@ -1300,7 +1301,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/matplotlib-base-3.10.8-py314h1194b4b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mesalib-25.0.5-h57bcd07_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/metis-5.1.0-hd0bcaf9_1007.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.6.0-nompi_notempest_ha12ee2e_100.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.5.1-nompi_tempest_py314he2b36d2_11.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mpg123-1.32.9-hc50e24c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/msgpack-python-1.1.2-py314h9891dd4_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda
@@ -1339,6 +1340,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/svt-av1-4.0.1-hecca717_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2022.3.0-hb700be7_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-devel-2022.3.0-h51de99f_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/tempest-remap-2.2.0-h397758c_8.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/unicodedata2-17.0.1-py314h5bd0f2a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/utfcpp-4.09-ha770c72_0.conda
@@ -5192,25 +5194,31 @@ packages:
   - pkg:pypi/pymoab?source=hash-mapping
   size: 4816101
   timestamp: 1733323618185
-- conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.6.0-nompi_notempest_ha12ee2e_100.conda
-  sha256: fb7ad1d385d69fd54beda5edb8a94b3952f6026f50761532c02c2569794b04d4
-  md5: ff945375e39dd29522711a5e5d6e4ef7
+- conda: https://conda.anaconda.org/conda-forge/linux-64/moab-5.5.1-nompi_tempest_py314he2b36d2_11.conda
+  sha256: aa6f3893cb5f1a9b2213962c004933ca957287ec0d5a8a2cc7019f78c3c9a4f8
+  md5: 33003b9a89e9c46c0ff2fec4c7f13a1f
   depends:
   - __glibc >=2.17,<3.0.a0
   - hdf5 * nompi_*
   - hdf5 >=1.14.6,<1.14.7.0a0
   - libblas >=3.9.0,<4.0a0
   - libgcc >=14
-  - libgfortran
-  - libgfortran5 >=14.3.0
   - liblapack >=3.9.0,<4.0a0
+  - libnetcdf * nompi_*
+  - libnetcdf >=4.9.3,<4.9.4.0a0
   - libstdcxx >=14
   - metis >=5.1.0,<5.1.1.0a0
+  - numpy >=1.23,<3
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  - setuptools
+  - tempest-remap >=2.2.0,<2.3.0
   license: LGPL-3.0-or-later
   license_family: LGPL
-  purls: []
-  size: 3275099
-  timestamp: 1763390855889
+  purls:
+  - pkg:pypi/pymoab?source=hash-mapping
+  size: 5215560
+  timestamp: 1760579310488
 - conda: https://conda.anaconda.org/conda-forge/linux-64/mpg123-1.32.9-hc50e24c_0.conda
   sha256: 39c4700fb3fbe403a77d8cc27352fa72ba744db487559d5d44bf8411bb4ea200
   md5: c7f302fd11eeb0987a6a5e1f3aed6a21
@@ -6459,6 +6467,22 @@ packages:
   purls: []
   size: 1115399
   timestamp: 1767886655300
+- conda: https://conda.anaconda.org/conda-forge/linux-64/tempest-remap-2.2.0-h397758c_8.conda
+  sha256: 284f9a718d473c0bfef4ebdd92ee536e78e2172e19d8af18efc4d241488d0b49
+  md5: e0f3fc43ff3e1de49368df58db547604
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - hdf5 >=1.14.6,<1.14.7.0a0
+  - libblas >=3.9.0,<4.0a0
+  - libgcc >=14
+  - liblapack >=3.9.0,<4.0a0
+  - libnetcdf >=4.9.3,<4.9.4.0a0
+  - libstdcxx >=14
+  license: BSD-3-Clause
+  license_family: BSD
+  purls: []
+  size: 1018292
+  timestamp: 1756901316872
 - conda: https://conda.anaconda.org/conda-forge/linux-64/tempest-remap-2.2.0-heeae502_5.conda
   sha256: e588e70a86629eaeb0d1c2567466ac97d67ba82dd627d0115fcbc14c3b30cae3
   md5: 2977d5268a6050196c42f03fd2a70020

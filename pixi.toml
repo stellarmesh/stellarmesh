@@ -8,7 +8,7 @@ platforms = ["linux-64"]
 python = ">=3.11"
 python-gmsh = ">=4"
 ocp = ">=7.8"
-moab = "*"
+moab = { version = "*", build = "*_py*" }
 setuptools = "<81" # Pinned to to MOAB, which depends on pkg_resources, but does not pin the version since removal
 setuptools_scm = ">=9.2.0,<10"
 meshio = ">=5.3.5, <6"
