@@ -2,6 +2,7 @@ import build123d as bd
 import pytest
 import stellarmesh as sm
 from pymoab.rng import Range
+from stellarmesh.moab import _is_group_for, _parse_group_value
 
 
 @pytest.fixture(scope="module")
@@ -138,3 +139,106 @@ class TestMOABVolumeModel:
 
     def test_tet_count_reasonable(self, volume_model):
         assert len(volume_model.tets) > 100
+
+
+class TestParseGroupValue:
+    """Tests for the physical-group name parser (per docs/format.rst).
+
+    Stellarmesh's writer emits canonical DAGMC groups as ``<prefix>:<slug>``
+    (e.g. ``mat:iron``), but conforming ``.msh`` producers like basalt
+    emit URL-encoded names like ``tag=N&material=<slug>``. The parser must
+    handle both forms without corrupting the slug.
+    """
+
+    # --- Legacy short-prefix form ---
+
+    def test_legacy_mat_simple(self):
+        assert _parse_group_value("mat:iron", "mat", "material") == "iron"
+
+    def test_legacy_mat_with_dot(self):
+        # Slugs may contain dots (e.g. body-suffix notation like ``foo.b1``).
+        assert (
+            _parse_group_value("mat:PLASMA_1.b1", "mat", "material")
+            == "PLASMA_1.b1"
+        )
+
+    def test_legacy_boundary_simple(self):
+        assert (
+            _parse_group_value("boundary:vacuum", "boundary", "boundary") == "vacuum"
+        )
+
+    def test_legacy_boundary_with_punctuation(self):
+        assert (
+            _parse_group_value("boundary:reflecting-xy", "boundary", "boundary")
+            == "reflecting-xy"
+        )
+
+    # --- URL-encoded form ---
+
+    def test_url_encoded_material(self):
+        assert (
+            _parse_group_value("tag=1&material=foo", "mat", "material") == "foo"
+        )
+
+    def test_url_encoded_material_with_dot(self):
+        assert (
+            _parse_group_value(
+                "tag=1&material=PLASMA_1.b1", "mat", "material"
+            )
+            == "PLASMA_1.b1"
+        )
+
+    def test_url_encoded_material_key_first(self):
+        # Key order should not matter for parse_qs.
+        assert (
+            _parse_group_value("material=iron&tag=3", "mat", "material") == "iron"
+        )
+
+    def test_url_encoded_surface(self):
+        # Surface boundary groups carry forward_volume / reverse_volume, not
+        # a ``boundary=`` key, so a spec-conforming surface group has no
+        # boundary value to extract.
+        assert (
+            _parse_group_value(
+                "tag=12&forward_volume=3&reverse_volume=4",
+                "boundary",
+                "boundary",
+            )
+            is None
+        )
+
+    # --- URL-encoded form smuggled behind the legacy prefix ---
+    # This is the empirical corruption pattern the bug introduces: if a
+    # downstream write of a buggy ``mat_name`` ever lands in a group, we
+    # should still recover the real slug.
+
+    def test_prefix_plus_url_encoded(self):
+        # ``mat:tag=1&material=PLASMA_1.b1`` -- defensively recover the slug.
+        assert (
+            _parse_group_value(
+                "mat:tag=1&material=PLASMA_1.b1", "mat", "material"
+            )
+            == "PLASMA_1.b1"
+        )
+
+    # --- Negative / boundary cases ---
+
+    def test_wrong_prefix_returns_none(self):
+        assert _parse_group_value("boundary:vacuum", "mat", "material") is None
+
+    def test_unrelated_group_returns_none(self):
+        assert _parse_group_value("graveyard", "mat", "material") is None
+
+    def test_empty_returns_none(self):
+        assert _parse_group_value("", "mat", "material") is None
+
+    def test_is_group_for_legacy(self):
+        assert _is_group_for("mat:iron", "mat", "material")
+        assert _is_group_for("boundary:vacuum", "boundary", "boundary")
+
+    def test_is_group_for_url_encoded(self):
+        assert _is_group_for("tag=1&material=foo", "mat", "material")
+
+    def test_is_group_for_rejects_wrong_prefix(self):
+        assert not _is_group_for("graveyard", "mat", "material")
+        assert not _is_group_for("mat:iron", "boundary", "boundary")

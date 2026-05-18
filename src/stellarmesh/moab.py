@@ -15,6 +15,7 @@ import tempfile
 import warnings
 from functools import cached_property
 from typing import Final, Optional, Union
+from urllib.parse import parse_qs
 
 import numpy as np
 
@@ -40,6 +41,69 @@ except ImportError as e:
     ) from e
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_group_value(group_name: str, prefix: str, key: str) -> Optional[str]:
+    """Extract a value from a DAGMC group name, tolerating both naming forms.
+
+    The stellarmesh ``.msh`` format spec (docs/format.rst) defines
+    URL-style physical-group names like ``tag=N&material=<slug>`` and
+    ``tag=N&forward_volume=V&reverse_volume=V``. The canonical DAGMC group
+    name produced from these by stellarmesh is ``<prefix>:<slug>`` (e.g.
+    ``mat:iron`` or ``boundary:vacuum``) -- the bare slug.
+
+    However, depending on how a ``.msh`` file's physical groups land in a
+    DAGMC ``Group`` set, the group name may still carry the URL-encoded
+    form. This parser handles both:
+
+    * Legacy/canonical: ``<prefix>:<slug>`` -> ``<slug>``.
+    * URL-encoded with prefix: ``<prefix>:tag=N&<key>=<slug>...`` ->
+      ``<slug>``.
+    * Bare URL-encoded: ``tag=N&<key>=<slug>...`` -> ``<slug>``.
+
+    Args:
+        group_name: The physical/DAGMC group name to parse.
+        prefix: The expected short prefix, without the colon (e.g.
+            ``"mat"`` or ``"boundary"``).
+        key: The query-string key to extract when the name is URL-encoded
+            (e.g. ``"material"`` or ``"boundary"``).
+
+    Returns:
+        The extracted value, or ``None`` if the name does not belong to
+        this prefix/key.
+    """
+    full_prefix = f"{prefix}:"
+    if group_name.startswith(full_prefix):
+        suffix = group_name[len(full_prefix) :]
+        # Detect URL-encoded form smuggled into the suffix: it must contain
+        # ``key=`` as a top-level pair. A bare slug like ``foo.b1`` is
+        # returned verbatim.
+        if "=" in suffix and (
+            suffix.startswith(f"{key}=")
+            or f"&{key}=" in suffix
+            or "tag=" in suffix.split("&", 1)[0]
+        ):
+            parsed = parse_qs(suffix, keep_blank_values=True)
+            value = parsed.get(key)
+            if value:
+                return value[0]
+            # URL-encoded but missing the requested key -- nothing to return.
+            return None
+        return suffix
+    # Bare URL-encoded form, no ``<prefix>:`` decoration.
+    if "=" in group_name and (
+        group_name.startswith(f"{key}=") or f"&{key}=" in group_name
+    ):
+        parsed = parse_qs(group_name, keep_blank_values=True)
+        value = parsed.get(key)
+        if value:
+            return value[0]
+    return None
+
+
+def _is_group_for(group_name: str, prefix: str, key: str) -> bool:
+    """Return True if a group name carries data for the given prefix/key."""
+    return _parse_group_value(group_name, prefix, key) is not None
 
 
 class EntitySet:
@@ -256,8 +320,9 @@ class DAGMCSurface(DAGMCEntitySet):
     def boundary(self) -> Optional[str]:
         """Name of the boundary condition assigned to this surface."""
         for group in self.groups:
-            if group.name.startswith("boundary:"):
-                return group.name[9:]
+            value = _parse_group_value(group.name, "boundary", "boundary")
+            if value is not None:
+                return value
         return None
 
     @boundary.setter
@@ -270,7 +335,7 @@ class DAGMCSurface(DAGMCEntitySet):
                 group.add(self)
                 existing_group = True
 
-            elif self in group and group.name.startswith("boundary:"):
+            elif self in group and _is_group_for(group.name, "boundary", "boundary"):
                 # Remove volume from existing group
                 group.remove(self)
 
@@ -314,8 +379,11 @@ class DAGMCVolume(DAGMCEntitySet):
     def material(self) -> Optional[str]:
         """Name of the material assigned to this volume."""
         for group in self.groups:
-            if self in group and group.name.startswith("mat:"):
-                return group.name[4:]
+            if self not in group:
+                continue
+            value = _parse_group_value(group.name, "mat", "material")
+            if value is not None:
+                return value
         return None
 
     @material.setter
@@ -328,7 +396,7 @@ class DAGMCVolume(DAGMCEntitySet):
                 group.add(self)
                 existing_group = True
 
-            elif self in group and group.name.startswith("mat:"):
+            elif self in group and _is_group_for(group.name, "mat", "material"):
                 group.remove(self)
 
         if not existing_group:
