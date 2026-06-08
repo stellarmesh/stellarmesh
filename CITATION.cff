@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Koen"
+  given-names: "Alexander"
+  orcid: "https://orcid.org/0009-0002-7876-9015"
+- family-names: "Romano"
+  given-names: "Paul"
+  orcid: "https://orcid.org/0000-0002-1147-045X"
+- family-names: "Pasmann"
+  given-names: "Samuel"
+  orcid: "https://orcid.org/0000-0003-1391-1471"
+title: "Stellarmesh: a meshing library for nuclear workflows"
+version: 2.0.1
+date-released: 2026-02-24
+url: "https://github.com/stellarmesh/stellarmesh"

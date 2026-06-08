@@ -60,6 +60,16 @@ Example
    :align: center
    :alt: Rendered mesh with normals.
 
+------
+Citing
+------
+
+If you use Stellarmesh in your research, please cite it. Citation metadata is
+available in the `CITATION.cff
+<https://github.com/stellarmesh/stellarmesh/blob/main/CITATION.cff>`__ file, and
+GitHub can generate APA or BibTeX entries from the "Cite this repository" button
+on the repository page.
+
 ----------------
 Acknowledgements
 ----------------
