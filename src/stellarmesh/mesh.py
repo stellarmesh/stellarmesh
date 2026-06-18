@@ -12,6 +12,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -321,6 +322,7 @@ class Mesh:
 
     _mesh_filename: str
     _ref_count: int = 0
+    _moose_format: bool = False
 
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
@@ -373,7 +375,11 @@ class Mesh:
         return Mesh(self._mesh_filename)
 
     def write(
-        self, filename: PathLike, *, save_all: bool = True, use_meshio: bool = False
+        self,
+        filename: PathLike,
+        *,
+        save_all: bool = True,
+        use_meshio: bool = False,
     ):
         """Write mesh to a file.
 
@@ -388,6 +394,13 @@ class Mesh:
         """
         with self:
             gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
+            if self._moose_format and use_meshio:
+                use_meshio = False
+                msg = (
+                    "Cannot use Meshio to produce mesh for MOOSE."
+                    "Reverting to gmsh exporter."
+                )
+                warnings.warn(msg, stacklevel=2)
             if use_meshio:
                 with tempfile.NamedTemporaryFile(suffix=".msh") as tmp_mesh:
                     gmsh.write(tmp_mesh.name)
@@ -770,7 +783,11 @@ class VolumeMesh(Mesh):
 
     @classmethod
     def from_geometry(
-        cls, geometry: Geometry, options: GmshVolumeOptions
+        cls,
+        geometry: Geometry,
+        options: GmshVolumeOptions,
+        *,
+        moose_format: bool = False,
     ) -> VolumeMesh:
         """Mesh solids with Gmsh.
 
@@ -780,8 +797,12 @@ class VolumeMesh(Mesh):
         Args:
             geometry: Geometry to be meshed.
             options: Meshing options.
+            moose_format: Whether to format mesh for use with MOOSE by assigning
+                physical groups to volume and surface entities. Surface entities
+                are named "surface_1", "surface_2", etc.
         """
         with cls() as mesh:
+            mesh._moose_format = moose_format
             gmsh.model.add("stellarmesh_model")
 
             for s in geometry.solids:
@@ -793,6 +814,16 @@ class VolumeMesh(Mesh):
 
             options.set_options()
             gmsh.model.mesh.generate(3)
+
+            if mesh._moose_format:
+                # Organize 2 & 3D entities into physical groups, needed for MOOSE.
+                assert len(geometry.solids) == len(gmsh.model.get_entities(3))
+                for dim, tag in gmsh.model.get_entities(3):
+                    gmsh.model.add_physical_group(
+                        dim, [tag], tag, geometry.material_names[tag - 1]
+                    )
+                for dim, tag in gmsh.model.get_entities(2):
+                    gmsh.model.add_physical_group(dim, [tag], tag, f"surface_{tag}")
 
             mesh._save_changes(save_all=True)
             return mesh
