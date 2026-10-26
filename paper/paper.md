@@ -64,8 +64,8 @@ DAGMC meshes are stored in the HDF5-based format of the Mesh-Oriented datABase (
 
 - **Orientability:** The normals of every triangle on a surface must point toward the same volume.
 - **Shared-surface topology:** Where adjoining volumes touch, they must share a single surface at the point of intersection. Each surface must label which logical volume the triangle normals point into and which they point out of.
-- **Non-intersection:** Surface meshes must intersect neither themselves nor other meshes.
-- **Watertightness:** While meshes with at least one shared surface are inherently non-manifold, the set of surfaces bounding a volume must contain neither holes nor open edges.
+- **Non-intersection:** Surface meshes must not intersect themselves or other meshes.
+- **Watertightness:** While meshes with at least one shared surface are inherently non-manifold, the set of surfaces bounding a volume must not contain holes or open edges.
 
 DAGMC does not mesh geometries itself.
 Instead, meshes must be prepared using a dedicated meshing library.
@@ -77,7 +77,7 @@ However, while there are a number of open-source meshing libraries, none produce
 
 Stellarmesh is thus motivated by the need for a dedicated Python library to produce DAGMC specification-compliant meshes from CAD geometries.
 
-# State of the field
+# State of the Field
 
 The commercial meshing library Coreform Cubit [@cubit] has supported DAGMC export natively since version 2023.11.
 In addition, two other free-software alternatives, CAD-to-DAGMC [@cad_to_dagmc] and CAD-to-OpenMC [@cad_to_openmc], provide comparable functionality.
@@ -100,7 +100,7 @@ Thus, at this time, there are four libraries that may be suitable for this purpo
 
 [^c2dlicence]: At the time of writing, the source code for the most recent version of `cad-to-dagmc-mesher` (0.3.7) is not public. Its public source stops at version 0.3.2.
 
-# Software design
+# Software Design
 
 ## Geometry Kernel
 
@@ -108,7 +108,7 @@ Boundary representation geometry operations are performed by the OpenCASCADE (OC
 OCC provides STEP file import [@occt] and is the geometry kernel underlying CadQuery [@cadquery] and build123d [@build123d], so Stellarmesh can process their objects directly.
 Stellarmesh additionally exposes OCC's imprint-and-merge functionality [@occt] to create shared-surface topology.
 
-## Meshing backend
+## Meshing Backend
 
 Stellarmesh provides two meshing backends.
 The OCC backend uses OpenCASCADE's built-in meshing functionality to produce surface meshes.
@@ -117,7 +117,7 @@ This backend supports linear and angular deviation tolerances [@occt] to ensure 
 The Gmsh [@geuzaine2009] backend does not support these tolerances, but in contrast to the OCC backend---whose meshes are primarily tailored to visualization---its algorithms are optimized to produce high-quality triangle elements with lower aspect ratios [@gmsh_manual].
 In addition, Gmsh can generate tetrahedral volume meshes that Stellarmesh converts to MOAB format [@moab] for unstructured volume-mesh tallies in OpenMC [@romano2015].
 
-## Stable file format
+## Stable File Format
 
 Regardless of the meshing backend, all Stellarmesh meshes are stored in Gmsh MSH 4.1 format [@gmsh_manual], with metadata encoded in Gmsh physical group names as URL-style `key=value` strings.
 
@@ -140,17 +140,17 @@ This surface mesh is then used for transport in OpenMC.
 
 ![An example neutronics workflow. A stellarator equilibrium is loaded using DESC [@dudt2020]. The blanket CAD geometry is built from this equilibrium using build123d. The mesh is generated using Stellarmesh. Transport is performed using OpenMC and DAGMC.](workflow.png){#fig:workflow}
 
-# Research impact statement
+# Research Impact Statement
 
 Stellarmesh models have been used in five peer-reviewed journal publications.
 All CAD neutronics models for Thea Energy's initial conceptual publication in *Nuclear Fusion* [@gates2025] and for the Helios Stellarator Design special issue of *Fusion Engineering and Design* [@swanson2026overview; @pasmann2026] were developed with Stellarmesh.
-\autoref{fig:tally} shows an OpenMC heating tally performed on a Stellarmesh model. The figure is reprinted from @swanson2026overview.
+\autoref{fig:tally} shows an OpenMC heating tally performed on a Stellarmesh model. The figure is reprinted from @pasmann2026.
 
 Stellarmesh has additionally been used in the development of material volume fraction estimation [@romano2025] and shutdown dose rate analysis [@romano2027] in OpenMC.
 
-![OpenMC heating tally performed on a Stellarmesh model of Thea Energy's Helios conceptual design, reproduced from [@swanson2026overview]. The tally is scored and displayed on a voxel grid, while the Stellarmesh surface mesh used for transport conforms to the geometric surfaces.](heating-tally.png){#fig:tally}
+![OpenMC heating tally performed on a Stellarmesh model of Thea Energy's Helios conceptual design, reproduced from [@pasmann2026]. The tally is scored and displayed on a voxel grid, while the Stellarmesh surface mesh used for transport conforms to the geometric surfaces.](heating-tally.png){#fig:tally}
 
-# AI usage disclosure
+# AI Usage Disclosure
 
 Stellarmesh versions up to v1.0 were designed and written without generative-AI assistance.
 Since v1.0, the developers have used Google and Anthropic models for code assistance and documentation.
