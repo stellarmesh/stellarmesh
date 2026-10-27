@@ -107,7 +107,7 @@ Stellarmesh additionally exposes OCC's imprint-and-merge functionality [@occt] t
 
 Stellarmesh provides two meshing backends.
 The OCC backend uses OpenCASCADE's built-in meshing functionality to produce surface meshes.
-This backend supports linear and angular deviation tolerances [@occt] to ensure that volumes separated by a known distance do not overlap.
+This backend supports linear and angular deviation tolerances [@occt], which can be used to ensure that volumes separated by a known distance do not overlap.
 
 The Gmsh [@geuzaine2009] backend does not support these tolerances, but in contrast to the OCC backend---whose meshes are primarily tailored to visualization---its algorithms are optimized to produce high-quality triangle elements with lower aspect ratios [@gmsh_manual].
 In addition, Gmsh can generate tetrahedral volume meshes that Stellarmesh converts to MOAB format [@moab] for unstructured volume-mesh tallies in OpenMC [@romano2015].
