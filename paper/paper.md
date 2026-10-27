@@ -68,14 +68,9 @@ DAGMC meshes are stored in the HDF5-based format of the Mesh-Oriented datABase (
 - **Watertightness:** While meshes with at least one shared surface are inherently non-manifold, the set of surfaces bounding a volume must not contain holes or open edges.
 
 DAGMC does not mesh geometries itself.
-Instead, meshes must be prepared using a dedicated meshing library.
-However, while there are a number of open-source meshing libraries, none produce meshes in the format and with the metadata described above.
+Stellarmesh is thus motivated by the need for a dedicated Python library to convert CAD geometries to specification-compliant DAGMC meshes.
 
 ![Stellarmesh render of a concentric torus model. Each inner surface is shared by the solid tori it bounds and tagged according to the direction of its normals.](surface-normals.png){#fig:dagmc-attributes}
-
-## Stellarmesh
-
-Stellarmesh is thus motivated by the need for a dedicated Python library to produce DAGMC specification-compliant meshes from CAD geometries.
 
 # State of the Field
 
@@ -128,7 +123,7 @@ Stellarmesh then provides the DAGMC file creation and metadata tagging, allowing
 ## Testing and Verification
 
 The Stellarmesh repository runs continuous integration tests on each commit.
-These tests perform Monte Carlo transport on a selection of CSG and Stellarmesh models of the same geometries to assert that the results match to within statistical error.
+These tests perform Monte Carlo transport on a selection of CSG and Stellarmesh models of the same geometries to assert that the results match to within a fixed tolerance.
 
 ## Workflow
 
