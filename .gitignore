@@ -38,3 +38,6 @@ __pycache__/
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# JOSS paper draft (built locally and by the draft-pdf workflow)
+paper/paper.pdf

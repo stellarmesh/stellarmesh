@@ -4,3 +4,5 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true
 *.brep filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text
 *.ipynb filter=lfs diff=lfs merge=lfs -text
+# Keep paper figures out of LFS so the JOSS paper build does not depend on LFS
+paper/*.png -filter -diff -merge -text
