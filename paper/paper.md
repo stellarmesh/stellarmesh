@@ -23,10 +23,8 @@ affiliations:
     index: 1
   - name: Argonne National Laboratory, Lemont, IL, USA
     index: 2
-date: "TK: submission date, format %e %B %Y"
+date: "30 October 2026"
 bibliography: paper.bib
-cssclasses:
-  - table-100
 ---
 
 # Summary
@@ -52,15 +50,13 @@ Monte Carlo neutron transport codes traditionally use constructive solid geometr
 This is suitable for simple geometries.
 However, most complex models are developed using boundary-representation computer-aided design (CAD) software.
 These models can then be discretized into surface or volume meshes using a variety of meshing codes.
-While approaches such as GEOUNED [@catalan2024] exist to translate boundary representation models to CSG, the spline surfaces common in these models must ultimately be discretized in either case [@haussler2017].
+While approaches such as GEOUNED [@catalan2024] exist to translate boundary representation models to CSG, the spline surfaces common in these models must ultimately be discretized in either case [@catalan2024; @haussler2017].
 
-<!-- DAGMC is a ray tracing library for OpenMC and other neutron transport codes that allows tallies to be computed on surface meshes derived from CAD geometry [@wilson2010]. -->
-<!-- DAGMC [@wilson2010] is a library that extends the particle tracking functionality of OpenMC to support ray-traced queries on triangular surface meshes derived from CAD geometry. -->
-DAGMC [@wilson2010] is a library that enables ray-traced queries on triangular surface meshes derived from CAD geometry, and which can be used in conjunction with OpenMC to support transport on such meshes.
+DAGMC [@wilson2010] is a library that enables ray-traced queries on triangular surface meshes derived from CAD geometry, and which can be used in conjunction with OpenMC to support transport on such meshes [@openmc_docs_cad].
 
 ## DAGMC Mesh Requirements
 
-DAGMC meshes are stored in the HDF5-based format of the Mesh-Oriented datABase (MOAB) [@moab] and comprise a set of closed logical volumes bounded by surface meshes, for which \autoref{fig:dagmc-attributes} shows a visual representation. These meshes must adhere to the following requirements [@smith2010; @dagmc_docs]:
+DAGMC meshes are stored in the HDF5-based format of the Mesh-Oriented datABase (MOAB) [@moab; @moab_readme] and comprise a set of closed logical volumes bounded by surface meshes, for which \autoref{fig:dagmc-attributes} shows a visual representation. These meshes must adhere to the following requirements [@smith2010; @dagmc_docs]:
 
 - **Orientability:** The normals of every triangle on a surface must point toward the same volume.
 - **Shared-surface topology:** Where adjoining volumes touch, they must share a single surface at the point of intersection. Each surface must label which logical volume the triangle normals point into and which they point out of.
@@ -74,7 +70,6 @@ As a result, a separate library is required to convert CAD geometries to DAGMC m
 
 # State of the Field
 
-<!-- From 2007 until 2009, DAGMC was bundled as a MOAB class. -->
 DAGMC was first released as a MOAB tool in 2007 [@moab_3_0].
 At this time, it supported only geometries from the proprietary ACIS geometry kernel, and these models were meshed at runtime using the bundled ACIS faceting routines [@moab_3_0; @cnerg_using_dagmc_2010].
 In 2010, faceting became a preprocessing step [@moab_dagmc_preproc] and watertight-sealing methods were published [@smith2010].
@@ -83,18 +78,18 @@ As of 2014, a typical DAGMC workflow relied on the proprietary meshing library C
 
 1. Import, imprint, and merge geometry using Cubit
 2. Assign volumes to material groups in Cubit
-3. Export the Cubit model in ACIS format.
+3. Export the Cubit model in ACIS format
 4. Facet it with `dagmc_preproc`
 5. Seal the result with `make_watertight`
 
 In 2016, the developers of DAGMC added an `export_dagmc` command to the Svalinn Cubit plugin, enabling users to perform steps 3 through 5 from within Cubit [@svalinn_cubit_plugin][^cubitnative].
 
-[^cubitnative]: In 2023, Coreform added native DAGMC export to Cubit [@coreform_cubit_2023_11], and the Svalinn plugin is unsupported since June 2025 [@svalinn_cubit_plugin].
+[^cubitnative]: In 2023, Coreform added native DAGMC export to Cubit [@coreform_cubit_2023_11], and the Svalinn plugin has been unsupported since June 2025 [@svalinn_cubit_plugin].
 
 In 2018, the first fully open-source alternative workflow was enabled with the development of `occ_faceter` [@occ_faceter], a C++ library that meshed geometries from the open-source OpenCASCADE (OCC) geometry kernel and converted them to DAGMC format.
 However, no packaged release of the project was ever made.
 
-The first packaged Python DAGMC export came as part of the 0.0.12 release of Paramak---an OCC-based Tokamak modelling library---in September 2020 [@shimwell2021; @paramak_pypi]. 
+The first packaged Python DAGMC export came as part of the 0.0.12 release of Paramak---an OCC-based tokamak modeling library---in September 2020 [@shimwell2021; @paramak_pypi].
 Paramak exported its own reactor objects as H5M either through Cubit or through direct STL export and conversion.
 These two export methods were later extracted from Paramak in 2021 and repackaged as `cad_to_h5m` [@cad_to_h5m] and `stl_to_h5m` [@stl_to_h5m] respectively.
 However, `cad_to_h5m` still had a dependency on Cubit and `stl_to_h5m` did not support shared-surface topology.
@@ -102,16 +97,16 @@ However, `cad_to_h5m` still had a dependency on Cubit and `stl_to_h5m` did not s
 In 2022, two further libraries, `brep_to_h5m` [@brep_to_h5m] and `vertices_to_h5m` [@vertices_to_h5m], were released.
 `brep_to_h5m` meshed OpenCASCADE BREP files with Gmsh and exported them to H5M with `stl_to_h5m` and later with `vertices_to_h5m`, which allowed the creation of H5M files from vertices stored in-memory.
 
-The first general-purpose, open-source converters came later in 2022 with the release of CAD to OpenMC [@cad_to_openmc] and CAD to DAGMC [@cad_to_dagmc].
-These libraries were the first to take arbitrary CAD geometires from OpenCASCADE, imprint and merge them, and convert them to tagged H5M models.
+The first general-purpose, open-source converters came later in 2022 with the release of CAD-to-OpenMC [@cad_to_openmc] and CAD-to-DAGMC [@cad_to_dagmc].
+These libraries were the first to take arbitrary CAD geometries from OpenCASCADE, imprint and merge them, and convert them to tagged H5M models.
 However, until late 2023, neither tool supported shared-surface topology [@cad_to_dagmc_v050; @cad_to_openmc_v026].
 
 In September 2023, the authors released the first version of Stellarmesh.
-Its development was motivated by the fragmentation of existing libraries the lack of any self-contained converter library that wrote all required DAGMC metadata.
+Its development was motivated by the fragmentation of existing libraries and the lack of any self-contained converter library that wrote all required DAGMC metadata.
 Stellarmesh aims to be feature-complete, stable, documented, and correct.
 
-Since then, Cubit, CAD to OpenMC, CAD to DAGMC, and Stellarmesh have each matured with active maintenance and new feature releases.
-Thus, at this time, there are four actively-maintained libraries for DAGMC mesh preparation. \autoref{tab:comparison} compares them on a subset of desired attributes including license, geometry input support, meshing backends, and testing methodology.
+Since then, Cubit, CAD-to-OpenMC, CAD-to-DAGMC, and Stellarmesh have each matured with active maintenance and new feature releases.
+Thus, at this time, there are four actively maintained libraries for DAGMC mesh preparation. \autoref{tab:comparison} compares them on a subset of desired attributes including license, geometry input support, meshing backends, and testing methodology.
 
 : Comparison of Stellarmesh, CAD-to-DAGMC [@cad_to_dagmc], CAD-to-OpenMC [@cad_to_openmc], and Coreform Cubit [@cubit] on a subset of features. \label{tab:comparison}
 
@@ -140,7 +135,7 @@ Stellarmesh additionally exposes OCC's imprint-and-merge functionality [@occt] t
 ## Meshing Backend
 
 Stellarmesh provides two meshing backends.
-For each, a subset of useful options are exposed for mesh control
+For each, a subset of useful options is exposed for mesh control.
 
 The OCC backend uses OpenCASCADE's built-in meshing functionality to produce surface meshes.
 This backend supports linear and angular deviation tolerances [@occt], which can be used to ensure that volumes separated by a known distance do not overlap.
@@ -159,7 +154,7 @@ Stellarmesh then provides the DAGMC file creation and metadata tagging, allowing
 ## Testing and Verification
 
 The Stellarmesh repository runs continuous integration tests on each commit.
-These tests perform Monte Carlo transport on a selection of CSG and Stellarmesh models of the same geometries to assert that the results match to within a fixed tolerance.
+These tests perform Monte Carlo transport on a selection of CSG and Stellarmesh models of the same geometries to assert that the results match to within a fixed relative tolerance of 2.5%.
 
 ## Workflow
 
@@ -169,22 +164,22 @@ From the DESC equilibrium, the blanket geometry is modeled with build123d.
 The geometry is imported into Stellarmesh, and a DAGMC surface mesh is generated.
 This surface mesh is then used for transport in OpenMC.
 
-![An example neutronics workflow. A stellarator equilibrium is loaded using DESC [@dudt2020]. The blanket CAD geometry is built from this equilibrium using build123d. The mesh is generated using Stellarmesh. Transport is performed using OpenMC and DAGMC.](workflow.png){#fig:workflow}
+![An example neutronics workflow. A stellarator equilibrium is loaded using DESC [@dudt2020]. The blanket CAD geometry is built from this equilibrium using build123d. The DAGMC surface mesh is generated using Stellarmesh. Transport is performed using OpenMC.](workflow.png){#fig:workflow}
 
 # Research Impact Statement
 
 Stellarmesh models have been used in five peer-reviewed journal publications.
 All CAD neutronics models for Thea Energy's initial conceptual publication in *Nuclear Fusion* [@gates2025] and for the Helios Stellarator Design special issue of *Fusion Engineering and Design* [@swanson2026overview; @pasmann2026] were developed with Stellarmesh.
-\autoref{fig:tally} shows an OpenMC heating tally performed on a Stellarmesh model. The figure is reprinted from @pasmann2026.
+\autoref{fig:tally} shows an OpenMC heating tally performed on a Stellarmesh model. The figure is reproduced from Fig. 15 of @pasmann2026.
 
 Stellarmesh has additionally been used in the development of material volume fraction estimation [@romano2025] and shutdown dose rate analysis [@romano2027] in OpenMC.
 
-![OpenMC heating tally performed on a Stellarmesh model of Thea Energy's Helios conceptual design, reproduced from [@pasmann2026]. The tally is scored and displayed on a voxel grid, while the Stellarmesh surface mesh used for transport conforms to the geometric surfaces.](heating-tally.png){#fig:tally}
+![OpenMC heating tally performed on a Stellarmesh model of Thea Energy's Helios conceptual design, reproduced from Fig. 15 of @pasmann2026 (CC BY 4.0). The tally is scored and displayed on a voxel grid, while the Stellarmesh surface mesh used for transport conforms to the geometric surfaces.](heating-tally.png){#fig:tally}
 
 # AI Usage Disclosure
 
-Stellarmesh versions up to v1.0 were designed and written without generative-AI assistance.
-Since v1.0, the developers have used Google and Anthropic models for code assistance and documentation.
+Stellarmesh versions up to v1.0.0 (September 2025) were designed and written without generative-AI assistance.
+Since v1.0.0, the developers have used Google and Anthropic models for code assistance and documentation.
 All model output has been verified.
 
 # Acknowledgments
