@@ -122,7 +122,7 @@ Thus, at this time, there are four actively maintained libraries for DAGMC mesh 
 | **Testing**                         | CAD-vs-CSG benchmarks                                   | CAD-vs-CSG benchmarks from `model_benchmark_zoo` [@model_benchmark_zoo] | CAD-vs-CSG benchmarks from `model_benchmark_zoo` [@model_benchmark_zoo] | Undetermined                                         |
 
 
-[^c2dlicence]: At the time of writing, the source code for the most recent version of `cad-to-dagmc-mesher` (0.3.7), is not public [@cad_to_dagmc_mesher]. Its public source stops at version 0.3.2.
+[^c2dlicence]: At the time of writing, the source code for the most recent version of `cad-to-dagmc-mesher` (0.3.7) is not public [@cad_to_dagmc_mesher]. Its public source stops at version 0.3.2.
 
 # Software Design
 
