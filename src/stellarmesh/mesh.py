@@ -9,6 +9,7 @@ desc: Mesh class wraps Gmsh functionality for geometry meshing.
 from __future__ import annotations
 
 import logging
+import math
 import shutil
 import subprocess
 import tempfile
@@ -163,14 +164,15 @@ class OCCSurfaceOptions:
 
     Attributes:
         algorithm: The meshing algorithm to use. Defaults to WATSON.
-        tol_angular: Angular tolerance for meshing. Defaults to 0.5.
+        tol_angular_deg: Angular tolerance for meshing in degrees. Defaults to
+        0.5 rad (about 28.6 degrees), the OCC default.
         tol_linear: Linear tolerance for meshing. Defaults to None.
         min_mesh_size: Minimum mesh size. Defaults to None.
         relative: Whether to use relative tolerances. Defaults to False.
         parallel: Whether to use parallel meshing. Defaults to True.
     """
 
-    tol_angular_deg: Optional[float] = 0.5
+    tol_angular_deg: Optional[float] = math.degrees(0.5)
     tol_linear: Optional[float] = None
     min_mesh_size: Optional[float] = None
     algorithm: OCCSurfaceAlgo = OCCSurfaceAlgo.WATSON
@@ -191,7 +193,7 @@ class OCCSurfaceOptions:
         params.MeshAlgo = self.algorithm.value
 
         if self.tol_angular_deg:
-            params.Angle = self.tol_angular_deg
+            params.Angle = math.radians(self.tol_angular_deg)
         else:
             params.Angle = float("inf")
 
