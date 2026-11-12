@@ -2,6 +2,7 @@
 
 import copy
 import importlib.resources
+import math
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class TestMeshMetadataAndImmutability:
     def mesh_sphere_occ(self, geom_bd_sphere):
         mesh = sm.SurfaceMesh.from_geometry(
             geom_bd_sphere,
-            sm.OCCSurfaceOptions(tol_angular_deg=0.5),
+            sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.5)),
         )
         return copy.deepcopy(mesh)
 
@@ -71,7 +72,7 @@ class TestSurfaceMesh:
 
         mesh_occ = sm.SurfaceMesh.from_geometry(
             geom,
-            sm.OCCSurfaceOptions(tol_angular_deg=0.5),
+            sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.5)),
         )
         with mesh_occ:
             num_elements = len(gmsh.model.mesh.get_elements(2, -1)[1][0])
@@ -93,7 +94,7 @@ class TestSurfaceMesh:
 
     def test_mesh_geom_imprintedboxes(self, geom_imprintedboxes):
         options = [
-            ("OCC", sm.OCCSurfaceOptions(tol_angular_deg=1)),
+            ("OCC", sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(1))),
             ("GMSH", sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2)),
         ]
         for backend, option in options:

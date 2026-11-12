@@ -2,6 +2,7 @@
 
 import importlib.resources
 import logging
+import math
 import random
 import tempfile
 from abc import ABC, abstractmethod
@@ -117,7 +118,7 @@ class Model(ABC):
         """Generate the mesh."""
         geom = self.sm_geom
         msh = sm.SurfaceMesh.from_geometry(
-            geom, sm.OCCSurfaceOptions(tol_angular_deg=0.2)
+            geom, sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.2))
         )
         logger.info(f"Mesh file {msh._mesh_filename}")
         return msh

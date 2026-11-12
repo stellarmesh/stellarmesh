@@ -17,7 +17,7 @@ Most Stellarmesh workflows will resemble the following. Here:
 
    geometry = sm.Geometry(solids, material_names = ["l1", "l2", "l3"])
    mesh = sm.SurfaceMesh.from_geometry(
-      geometry, sm.OCCSurfaceOptions(tol_angular_deg = 0.5)
+      geometry, sm.OCCSurfaceOptions(tol_angular_deg = 30)
    )
    mesh.write("test.msh")
 

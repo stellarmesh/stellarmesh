@@ -1,4 +1,5 @@
 import logging
+import math
 
 import gmsh
 import pytest
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.parametrize(
     "mesh_options",
     [
-        sm.OCCSurfaceOptions(tol_angular_deg=0.1),
+        sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.1)),
         sm.GmshSurfaceOptions(curvature_target=45, num_threads=8),
     ],
     ids=["OCC", "Gmsh"],
