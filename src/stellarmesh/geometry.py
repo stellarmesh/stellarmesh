@@ -18,6 +18,8 @@ from typing import (
     overload,
 )
 
+from ._core import topods_solid
+
 try:
     from OCP.BOPAlgo import (  # pyright: ignore[reportMissingModuleSource]
         BOPAlgo_MakeConnected,
@@ -36,7 +38,6 @@ try:
     )
     from OCP.TopExp import TopExp_Explorer  # pyright: ignore[reportMissingModuleSource]
     from OCP.TopoDS import (  # pyright: ignore[reportMissingModuleSource]
-        TopoDS,
         TopoDS_Face,
         TopoDS_Shape,
         TopoDS_Shell,
@@ -205,7 +206,7 @@ class Geometry:
         """Return all the solids in this shape."""
         solids: list[TopoDS_Solid] = []
         if shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_SOLID:
-            solids.append(TopoDS.Solid_s(shape))
+            solids.append(topods_solid(shape))
         elif shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:
             solids = cls._get_child_shapes(shape, TopoDS_Solid)
         return solids

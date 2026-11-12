@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlencode
 import meshio
 import numpy as np
 
-from ._core import PathLike
+from ._core import PathLike, topods_face
 from .geometry import Geometry
 
 try:
@@ -53,7 +53,6 @@ try:
     from OCP.TopExp import TopExp_Explorer  # pyright: ignore[reportMissingModuleSource]
     from OCP.TopLoc import TopLoc_Location  # pyright: ignore[reportMissingModuleSource]
     from OCP.TopoDS import (  # pyright: ignore[reportMissingModuleSource]
-        TopoDS,
         TopoDS_Builder,
         TopoDS_Compound,
         TopoDS_Shape,
@@ -522,7 +521,7 @@ class SurfaceMesh(Mesh):
         for shape in geometry.solids + geometry.faces:
             explorer = TopExp_Explorer(shape, TopAbs_FACE)
             while explorer.More():
-                face = TopoDS.Face_s(explorer.Current())
+                face = topods_face(explorer.Current())
                 # OCC ignores the deflection if the shape tolerance is less than the
                 # deflection
                 tolerance_tool.LimitTolerance(face, 0, params.Deflection)
@@ -539,7 +538,7 @@ class SurfaceMesh(Mesh):
         known_surface_tags = []
         explorer = TopExp_Explorer(cmp, TopAbs_FACE)
         while explorer.More():
-            face = TopoDS.Face_s(explorer.Current())
+            face = topods_face(explorer.Current())
 
             # This returns the existing dim_tag if face is already bound
             dim_tags = cls._import_occ(face, native=True)
