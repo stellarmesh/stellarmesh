@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and user support
+    url: https://github.com/stellarmesh/stellarmesh/discussions
+    about: For usage questions and troubleshooting, please use GitHub Discussions
+  - name: Documentation
+    url: https://stellarmesh.readthedocs.io
+    about: Installation instructions, tutorials and API reference

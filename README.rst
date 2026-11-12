@@ -70,6 +70,31 @@ available in the `CITATION.cff
 GitHub can generate APA or BibTeX entries from the "Cite this repository" button
 on the repository page.
 
+------------
+Contributing
+------------
+
+Contributions are welcome — bug reports, feature requests, documentation fixes
+and pull requests.
+
+* **Questions and usage help**: start a thread in `GitHub Discussions
+  <https://github.com/stellarmesh/stellarmesh/discussions>`__.
+* **Bugs and feature requests**: open an `issue
+  <https://github.com/stellarmesh/stellarmesh/issues/new/choose>`__ from one of
+  the templates. Where applicable, please attach code to reproduce your issue.
+* **Pull requests**: for anything larger than a small fix, open an issue first so
+  we can agree on the approach before you write code.
+
+Stellarmesh uses `pixi <https://pixi.sh>`__ to manage its development
+environments, and stores binary data in Git LFS. To set up:
+
+.. code:: sh
+
+   git lfs install
+   git clone https://github.com/stellarmesh/stellarmesh.git
+   cd stellarmesh
+   pixi run -e test test-unit
+
 ----------------
 Acknowledgements
 ----------------
