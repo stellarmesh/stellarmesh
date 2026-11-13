@@ -48,6 +48,25 @@ class TestMeshMetadataAndImmutability:
         mesh2 = sm.Mesh(tmp_path / "mesh.msh")
         assert mesh2.entity_metadata(2, 1).forward_volume == 1
 
+    def test_from_geometry_writes_mesh_once(self, geom_bd_nestedspheres, monkeypatch):
+        """Metadata setters inside from_geometry must not each rewrite the file."""
+        writes = []
+        original_write = gmsh.write
+
+        def counting_write(filename):
+            writes.append(filename)
+            original_write(filename)
+
+        monkeypatch.setattr(gmsh, "write", counting_write)
+        sm.SurfaceMesh.from_geometry(geom_bd_nestedspheres, sm.OCCSurfaceOptions())
+        assert len(writes) == 1
+
+    def test_metadata_discarded_on_exception(self, mesh_sphere_occ):
+        with pytest.raises(ValueError, match="abort"), mesh_sphere_occ:
+            mesh_sphere_occ.entity_metadata(2, 1).forward_volume = 10
+            raise ValueError("abort")
+        assert mesh_sphere_occ.entity_metadata(2, 1).forward_volume == 1
+
 
 class TestSurfaceMesh:
     @pytest.mark.parametrize(
