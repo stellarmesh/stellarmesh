@@ -242,7 +242,7 @@ class EntityMetadata:
                 )
 
             pg = gmsh.model.add_physical_group(self._dim, [self._tag], self._tag)
-            self._mesh._save_changes()
+            self._mesh._dirty = True
             return pg
 
     def __getattr__(self, name):
@@ -294,7 +294,7 @@ class EntityMetadata:
                 "Setting metadata"
                 + f"dim={self._dim}, tag={self._tag}, name={name}: {value}"
             )
-            self._mesh._save_changes()
+            self._mesh._dirty = True
 
 
 @dataclass(kw_only=True)
@@ -322,6 +322,7 @@ class Mesh:
 
     _mesh_filename: str
     _ref_count: int = 0
+    _dirty: bool = False
 
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
@@ -359,18 +360,30 @@ class Mesh:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Cleanup (finalize) gmsh."""
+        """Write pending changes and finalize gmsh when the outermost context exits.
+
+        Changes are discarded if the context exits with an exception, since the gmsh
+        state may be partial (e.g. physical groups stashed mid-refine).
+        """
         self._ref_count -= 1
         if self._ref_count == 0:
-            gmsh.finalize()
+            try:
+                if self._dirty and exc_type is None:
+                    self._save_changes()
+            finally:
+                self._dirty = False
+                gmsh.finalize()
 
     def _save_changes(self, *, save_all: bool = True):
         gmsh.option.set_number("Mesh.SaveAll", 1 if save_all else 0)
         gmsh.option.set_number("Mesh.MshFileVersion", 4.1)
         gmsh.write(self._mesh_filename)
+        self._dirty = False
 
     def __deepcopy__(self, memo):
         """Return a deep copy of this mesh."""
+        if self._dirty:
+            self._save_changes()
         return Mesh(self._mesh_filename)
 
     def write(
