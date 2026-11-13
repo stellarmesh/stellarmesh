@@ -11,6 +11,6 @@ authors:
   given-names: "Samuel"
   orcid: "https://orcid.org/0000-0003-1391-1471"
 title: "Stellarmesh: a meshing library for nuclear workflows"
-version: 2.0.2
-date-released: 2026-11-12
+version: 2.0.3
+date-released: 2026-11-13
 url: "https://github.com/stellarmesh/stellarmesh"
