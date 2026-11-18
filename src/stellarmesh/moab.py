@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import warnings
+from dataclasses import dataclass
 from functools import cached_property
 from typing import Final, Optional, Union
 
@@ -40,6 +42,76 @@ except ImportError as e:
     ) from e
 
 logger = logging.getLogger(__name__)
+
+
+_INT = re.compile(r"-?\d+")
+
+
+@dataclass(frozen=True)
+class WatertightReport:
+    """Result of DAGMC ``check_watertight``; truthy if the model is watertight.
+
+    Attributes:
+        output: Tool stdout.
+        leaky_surfaces: Global IDs of leaky surfaces.
+        leaky_volumes: Global IDs of leaky volumes.
+        parsed: Whether a leaky-ID line was found. A report without one is falsy.
+    """
+
+    output: str
+    leaky_surfaces: list[int]
+    leaky_volumes: list[int]
+    parsed: bool
+
+    def __bool__(self) -> bool:
+        """Watertight verdict."""
+        return self.parsed and not self.leaky_surfaces and not self.leaky_volumes
+
+    @classmethod
+    def parse(cls, output: str) -> WatertightReport:
+        """Parse ``check_watertight`` stdout."""
+        leaky: dict[str, list[int]] = {}
+        for line in output.splitlines():
+            for kind in ("surface", "volume"):
+                prefix = f"leaky {kind} ids="
+                if prefix in line:
+                    ids = line.split(prefix, 1)[1]
+                    leaky[kind] = [int(i) for i in _INT.findall(ids)]
+        return cls(
+            output, leaky.get("surface", []), leaky.get("volume", []), bool(leaky)
+        )
+
+
+@dataclass(frozen=True)
+class OverlapReport:
+    """Result of DAGMC ``overlap_check``; truthy if no overlaps were found.
+
+    Attributes:
+        output: Tool stdout.
+        overlaps: (location, overlapping volume IDs) per reported overlap.
+    """
+
+    output: str
+    overlaps: list[tuple[tuple[float, float, float], tuple[int, ...]]]
+
+    def __bool__(self) -> bool:
+        """No-overlap verdict, requiring the tool's explicit all-clear line."""
+        return not self.overlaps and "No overlaps were found." in self.output
+
+    @classmethod
+    def parse(cls, output: str) -> OverlapReport:
+        """Parse ``overlap_check`` stdout."""
+        overlaps = []
+        location: Optional[tuple[float, float, float]] = None
+        for line in output.splitlines():
+            if line.startswith("Overlap Location:"):
+                x, y, z = (float(v) for v in line.split(":", 1)[1].split())
+                location = (x, y, z)
+            elif line.startswith("Overlapping volumes:") and location is not None:
+                volumes = tuple(int(v) for v in _INT.findall(line.split(":", 1)[1]))
+                overlaps.append((location, volumes))
+                location = None
+        return cls(output, overlaps)
 
 
 class EntitySet:
@@ -627,7 +699,7 @@ class DAGMCModel(MOABModel):
         binary_path: str = "overlap_check",
         points_per_edge: int = 0,
         num_threads: int = 1,
-    ) -> bool:
+    ) -> OverlapReport:
         """Check mesh for overlaps.
 
         Args:
@@ -640,7 +712,7 @@ class DAGMCModel(MOABModel):
             num_threads: Number of threads.
 
         Returns:
-            True if no overlaps are found, else False.
+            Report, truthy if no overlaps are found.
         """
         out = subprocess.run(
             [
@@ -655,13 +727,13 @@ class DAGMCModel(MOABModel):
             text=True,
             check=True,
         )
-        return "No overlaps were found." in out.stdout.splitlines()
+        return OverlapReport.parse(out.stdout)
 
     @staticmethod
     def check_watertight(
         input_filename: PathLike,
         binary_path: str = "check_watertight",
-    ):
+    ) -> WatertightReport:
         """Check mesh for watertightness.
 
         Args:
@@ -670,7 +742,7 @@ class DAGMCModel(MOABModel):
             "check_watertight".
 
         Returns:
-            True if mesh is watertight, else False.
+            Report, truthy if the mesh is watertight.
         """
         out = subprocess.run(
             [binary_path, str(input_filename)],
@@ -678,11 +750,7 @@ class DAGMCModel(MOABModel):
             text=True,
             check=True,
         )
-        output_lines = out.stdout.splitlines()
-        for line in output_lines:
-            if ("leaky surface ids=" in line) or ("leaky volume ids=" in line):
-                return line.strip().endswith("=")
-        return False
+        return WatertightReport.parse(out.stdout)
 
     @classmethod
     def from_mesh(

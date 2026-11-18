@@ -1,6 +1,7 @@
 """Meshing tests."""
 
 import copy
+import gc
 import importlib.resources
 import math
 import subprocess
@@ -202,6 +203,100 @@ class TestVolumeMesh:
         mesh.write(tmp_path / "out.exo", use_meshio=True)
 
 
+class TestMeshMerge:
+    @pytest.fixture
+    def sphere_meshes(self, model_bd_sphere):
+        options = sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.5))
+        left = sm.SurfaceMesh.from_geometry(
+            sm.Geometry(model_bd_sphere, ["a"], solid_names=["s1"]), options
+        )
+        moved = [bd.Pos(100, 0, 0) * model_bd_sphere[0]]
+        right = sm.SurfaceMesh.from_geometry(
+            sm.Geometry(moved, ["b"], solid_names=["s2"]), options
+        )
+        return left, right
+
+    def test_merge(self, sphere_meshes, tmp_path: Path):
+        left, right = sphere_meshes
+        merged = sm.Mesh.merge({"left": left, "right": right})
+
+        with left:
+            max_left_tag = max(t for _, t in gmsh.model.get_entities())
+        right_volume = merged.merge_map["right"][(3, 1)]
+        assert merged.merge_map["left"][(3, 1)] == 1
+        assert right_volume == 10 ** len(str(max_left_tag)) + 1
+
+        with merged:
+            volumes = [t for _, t in gmsh.model.get_entities(3)]
+            surfaces = [t for _, t in gmsh.model.get_entities(2)]
+        assert sorted(volumes) == [1, right_volume]
+        expected = {1: ("left", "s1", "a"), right_volume: ("right", "s2", "b")}
+        for tag, (source, name, material) in expected.items():
+            md = merged.entity_metadata(3, tag).as_dict()
+            assert (md["source"], md["name"], md["material"]) == (
+                source,
+                name,
+                material,
+            )
+        for tag in surfaces:
+            assert merged.entity_metadata(2, tag).forward_volume in volumes
+
+        model = sm.DAGMCModel.from_mesh(merged)
+        assert len(model.volumes) == 2
+        model.write(tmp_path / "merged.h5m")
+        report = sm.DAGMCModel.check_watertight(tmp_path / "merged.h5m")
+        assert report
+        assert report.leaky_surfaces == []
+        assert report.leaky_volumes == []
+
+    def test_merge_material_map(self, sphere_meshes):
+        left, right = sphere_meshes
+        merged = sm.Mesh.merge(
+            {"left": left, "right": right},
+            material_map=lambda label, tag, material: (
+                "c" if material == "b" else material
+            ),
+        )
+        tag = merged.merge_map["right"][(3, 1)]
+        assert merged.entity_metadata(3, tag).material == "c"
+
+    def test_merge_errors(self, sphere_meshes, geom_bd_sphere):
+        left, right = sphere_meshes
+        unnamed = sm.SurfaceMesh.from_geometry(geom_bd_sphere, sm.OCCSurfaceOptions())
+        with pytest.raises(ValueError, match="without a material"):
+            sm.Mesh.merge({"left": left, "unnamed": unnamed})
+        with pytest.raises(ValueError, match="longer than"):
+            sm.Mesh.merge(
+                {"left": left}, material_map=lambda label, tag, material: "x" * 29
+            )
+        merged = sm.Mesh.merge({"left": left})
+        with pytest.raises(ValueError, match="already has source metadata"):
+            sm.Mesh.merge({"merged": merged, "right": right})
+        with pytest.raises(ValueError, match="at least one mesh"):
+            sm.Mesh.merge({})
+        with left, pytest.raises(RuntimeError, match="open context"):
+            sm.Mesh.merge({"left": left, "right": right})
+
+    def test_volume_report(self):
+        radius, centre = 10.0, (5.0, -3.0, 2.0)
+        sphere = bd.Pos(*centre) * bd.Solid.make_sphere(radius)
+        mesh = sm.SurfaceMesh.from_geometry(
+            sm.Geometry([sphere], ["a"]), sm.OCCSurfaceOptions(tol_angular_deg=5)
+        )
+        (report,) = mesh.volume_report()
+        assert report.metadata["material"] == "a"
+        assert report.volume == pytest.approx(4 / 3 * math.pi * radius**3, rel=0.01)
+        assert math.dist(report.centroid, centre) < 0.01 * radius
+
+    def test_temp_file_deleted(self):
+        mesh = sm.Mesh()
+        path = Path(mesh._mesh_filename)
+        assert path.exists()
+        del mesh
+        gc.collect()
+        assert not path.exists()
+
+
 class TestMeshUtilities:
     @pytest.fixture
     def model_bd_stellarator_plasma(self):
@@ -230,10 +325,17 @@ class TestMeshUtilities:
                 capture_output=True,
                 text=True,
             )
-            return result.stdout
+            report = sm.DAGMCModel.check_overlap("dagmc.h5m", points_per_edge=5)
+            return result.stdout, report
 
-        assert "No overlaps were found" in check_overlap(2.5)
-        assert "Overlap Location:" in check_overlap(5)
+        stdout, report = check_overlap(2.5)
+        assert "No overlaps were found" in stdout
+        assert report
+        stdout, report = check_overlap(5)
+        assert "Overlap Location:" in stdout
+        assert not report
+        assert report.overlaps
+        assert all(len(volumes) >= 2 for _, volumes in report.overlaps)
 
     def test_gmsh_threads(self, geom_bd_layered_torus, tmp_path: Path):
         mesh = sm.SurfaceMesh.from_geometry(

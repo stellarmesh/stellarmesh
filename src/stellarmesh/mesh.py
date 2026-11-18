@@ -13,11 +13,13 @@ import math
 import shutil
 import subprocess
 import tempfile
+import weakref
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal, Optional, get_type_hints, overload
+from typing import Any, Literal, Optional, Self, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
 
 import meshio
@@ -65,6 +67,28 @@ except ImportError as e:
 
 
 logger = logging.getLogger(__name__)
+
+# MOAB NAME tags hold 32 characters and DAGMC prefixes material groups with "mat:".
+MAX_MATERIAL_LENGTH = 28
+
+
+def _unlink_quietly(path: str) -> None:
+    Path(path).unlink(missing_ok=True)
+
+
+def _parse_metadata(name: str) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(name).items()}
+
+
+def _metadata_groups(dim: int) -> dict[int, tuple[int, dict[str, str]]]:
+    """Entity tag -> (group tag, parsed name) for each single-entity group of dim."""
+    out: dict[int, tuple[int, dict[str, str]]] = {}
+    for _, pg in gmsh.model.get_physical_groups(dim):
+        entities = gmsh.model.get_entities_for_physical_group(dim, pg)
+        if len(entities) == 1:
+            name = gmsh.model.get_physical_name(dim, pg)
+            out[int(entities[0])] = (pg, _parse_metadata(name))
+    return out
 
 
 class GmshSurfaceAlgo(Enum):
@@ -296,6 +320,20 @@ class EntityMetadata:
             )
             self._mesh._dirty = True
 
+    def as_dict(self) -> dict[str, str]:
+        """Return every stored key, including keys this class does not declare.
+
+        Returns:
+            Parsed metadata, or an empty dict if the entity has no metadata group.
+        """
+        with self._mesh:
+            try:
+                metadata_group = self._get_metadata_group(create_if_missing=False)
+            except RuntimeError:
+                return {}
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+            return _parse_metadata(url_str)
+
 
 @dataclass(kw_only=True)
 class SurfaceMetadata(EntityMetadata):
@@ -304,6 +342,7 @@ class SurfaceMetadata(EntityMetadata):
     forward_volume: int = field(init=False)
     reverse_volume: int = field(init=False)
     boundary_condition: str = field(init=False)
+    source: str = field(init=False)
 
 
 @dataclass(kw_only=True)
@@ -311,6 +350,27 @@ class VolumeMetadata(EntityMetadata):
     """Metadata for a Mesh elementary volume."""
 
     material: str = field(init=False)
+    name: str = field(init=False)
+    source: str = field(init=False)
+
+
+@dataclass(frozen=True)
+class VolumeReport:
+    """Volume and centroid of a mesh volume, from its bounding triangles.
+
+    Attributes:
+        tag: Volume tag.
+        metadata: Every metadata key of the volume (see `EntityMetadata.as_dict`).
+        volume: Signed volume. Positive when triangle normals point out of the
+            surfaces' forward volume; negative for inverted senses; ~0 for an open
+            boundary.
+        centroid: Centroid, NaN when the volume is 0.
+    """
+
+    tag: int
+    metadata: dict[str, str]
+    volume: float
+    centroid: tuple[float, float, float]
 
 
 class Mesh:
@@ -323,18 +383,21 @@ class Mesh:
     _mesh_filename: str
     _ref_count: int = 0
     _dirty: bool = False
+    merge_map: dict[str, dict[tuple[int, int], int]]
 
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
-        Mesh operations are saved only to a temporary file. Persist changes externally
-        with the Mesh `write` method.
+        Mesh operations are saved only to a temporary file, deleted when the Mesh is
+        garbage collected. Persist changes externally with the Mesh `write` method.
 
         Args:
             mesh_filename: Optional .msh file to load. Defaults to None.
         """
         with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp_file:
             self._mesh_filename = tmp_file.name
+        weakref.finalize(self, _unlink_quietly, self._mesh_filename)
+        self.merge_map = {}
 
         if mesh_filename:
             shutil.copy2(str(mesh_filename), self._mesh_filename)
@@ -410,21 +473,30 @@ class Mesh:
             else:
                 gmsh.write(str(filename))
 
-    def render(
+    def render(  # noqa: PLR0913
         self,
         output_filename: Optional[str] = None,
         rotation_xyz: tuple[float, float, float] = (0, 0, 0),
         normals: int = 0,
         *,
         clipping: bool = True,
+        options: Optional[Mapping[str, float]] = None,
+        size: Optional[tuple[int, int]] = None,
     ) -> str:
         """Render mesh as an image.
+
+        Gmsh's OpenGL context and a PyVista off-screen context must not share a
+        process: together they abort in Mesa's LLVM backend. Callers that also use
+        PyVista should render in a subprocess.
 
         Args:
             output_filename: Optional output filename. Defaults to None.
             rotation_xyz: Rotation in Euler angles. Defaults to (0, 0, 0).
             normals: Normal render size. Defaults to 0.
             clipping: Whether to enable mesh clipping. Defaults to True.
+            options: Gmsh numeric options (e.g. ``{"Mesh.SurfaceEdges": 0}``),
+                applied after the defaults set by this method.
+            size: Image (width, height) in pixels.
 
         Returns:
             Path to image file, either passed output_filename or a temporary file.
@@ -438,6 +510,11 @@ class Mesh:
             gmsh.option.set_number("General.RotationX", rotation_xyz[0])
             gmsh.option.set_number("General.RotationY", rotation_xyz[1])
             gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
+            for key, value in (options or {}).items():
+                gmsh.option.set_number(key, value)
+            if size is not None:
+                gmsh.option.set_number("General.GraphicsWidth", size[0])
+                gmsh.option.set_number("General.GraphicsHeight", size[1])
             if not output_filename:
                 with tempfile.NamedTemporaryFile(
                     delete=False, mode="w", suffix=".png"
@@ -446,10 +523,199 @@ class Mesh:
 
             try:
                 gmsh.fltk.initialize()
+                # Without an explicit draw, the capture can precede the first frame
+                # and come back blank.
+                gmsh.graphics.draw()
                 gmsh.write(output_filename)
             finally:
                 gmsh.fltk.finalize()
             return output_filename
+
+    @classmethod
+    def merge(  # noqa: PLR0912, PLR0915
+        cls,
+        meshes: Mapping[str, Mesh],
+        *,
+        material_map: Optional[Callable[[str, int, Optional[str]], str]] = None,
+        volume_elements: bool = True,
+    ) -> Self:
+        """Merge meshes into one, keeping each input's entities and metadata.
+
+        The first input keeps its tags. Each later input's entity tags are offset by
+        the next power of ten above the largest entity tag merged so far; node and
+        element tags by the running maxima. Metadata tags and surface volume senses
+        are rewritten to the offset tags, and every surface and volume gets
+        ``source=<label>``. Only single-entity (metadata) physical groups of
+        surfaces and volumes are copied. Nothing is imprinted: inputs must not
+        overlap or share surfaces.
+
+        The returned mesh's `merge_map` maps, per label, ``(dim, original_tag)`` to
+        the merged tag for surfaces and volumes.
+
+        Args:
+            meshes: Input meshes by label. Their contexts must be closed.
+            material_map: Called as ``material_map(label, original_tag, material)``
+                for each volume; returns the merged material. Defaults to keeping
+                each material.
+            volume_elements: Copy volume elements and the nodes inside volumes.
+                False keeps only the surface mesh, which is all DAGMC uses.
+
+        Raises:
+            ValueError: If no meshes are given, an input already has ``source``
+                metadata, or a merged volume has no material or one longer than
+                `MAX_MATERIAL_LENGTH`.
+            RuntimeError: If an input has an open context.
+
+        Returns:
+            Merged mesh.
+        """
+        if not meshes:
+            raise ValueError("merge needs at least one mesh.")
+        for label, mesh in meshes.items():
+            if mesh._ref_count > 0:
+                raise RuntimeError(f"Mesh {label!r} has an open context.")
+
+        with cls() as out:
+            out_model = gmsh.model.get_current()
+            missing: list[tuple[str, int]] = []
+            too_long: list[tuple[str, int, str]] = []
+            for i, (label, mesh) in enumerate(meshes.items()):
+                if i == 0:
+                    offset = node_offset = element_offset = 0
+                else:
+                    max_tag = max((t for _, t in gmsh.model.get_entities()), default=0)
+                    offset = 10 ** len(str(max_tag))
+                    node_offset = int(gmsh.model.mesh.get_max_node_tag())
+                    element_offset = int(gmsh.model.mesh.get_max_element_tag())
+
+                gmsh.model.add(f"stellarmesh_merge_input_{i}")
+                gmsh.merge(mesh._mesh_filename)
+                entities = []
+                for dim in range(4):
+                    for _, tag in gmsh.model.get_entities(dim):
+                        boundary = [
+                            abs(int(b)) for b in gmsh.model.get_adjacencies(dim, tag)[1]
+                        ]
+                        if dim == 3 and not volume_elements:
+                            entities.append((dim, tag, boundary, None, None))
+                            continue
+                        nodes = gmsh.model.mesh.get_nodes(dim, tag)[:2]
+                        elements = gmsh.model.mesh.get_elements(dim, tag)
+                        entities.append((dim, tag, boundary, nodes, elements))
+                metadata = {dim: _metadata_groups(dim) for dim in (2, 3)}
+                gmsh.model.remove()
+                gmsh.model.set_current(out_model)
+
+                for dim, tag, boundary, nodes, elements in entities:
+                    new_tag = tag + offset
+                    gmsh.model.add_discrete_entity(
+                        dim, new_tag, [b + offset for b in boundary]
+                    )
+                    if nodes is not None and len(nodes[0]):
+                        gmsh.model.mesh.add_nodes(
+                            dim, new_tag, nodes[0] + node_offset, nodes[1]
+                        )
+                    if elements is not None and len(elements[0]):
+                        types, element_tags, element_nodes = elements
+                        gmsh.model.mesh.add_elements(
+                            dim,
+                            new_tag,
+                            types,
+                            [t + element_offset for t in element_tags],
+                            [n + node_offset for n in element_nodes],
+                        )
+
+                tag_map: dict[tuple[int, int], int] = {}
+                for dim in (2, 3):
+                    groups = metadata[dim]
+                    for _, tag, *_ in (e for e in entities if e[0] == dim):
+                        data = dict(groups[tag][1]) if tag in groups else {}
+                        if "source" in data:
+                            raise ValueError(
+                                f"Mesh {label!r} already has source metadata; "
+                                "merge its inputs directly."
+                            )
+                        new_tag = tag + offset
+                        data["tag"] = str(new_tag)
+                        for key in ("forward_volume", "reverse_volume"):
+                            if data.get(key, "None") != "None":
+                                data[key] = str(int(data[key]) + offset)
+                        data["source"] = label
+                        if dim == 3:
+                            material = data.get("material")
+                            if material == "None":
+                                material = None
+                            if material_map is not None:
+                                material = material_map(label, tag, material)
+                            if not material:
+                                missing.append((label, tag))
+                            elif len(material) > MAX_MATERIAL_LENGTH:
+                                too_long.append((label, tag, material))
+                            data["material"] = str(material)
+                        gmsh.model.add_physical_group(
+                            dim, [new_tag], new_tag, urlencode(data)
+                        )
+                        tag_map[(dim, tag)] = new_tag
+                out.merge_map[label] = tag_map
+
+            if missing:
+                raise ValueError(f"Volumes without a material: {missing}")
+            if too_long:
+                raise ValueError(
+                    f"Materials longer than {MAX_MATERIAL_LENGTH} characters: "
+                    f"{too_long}"
+                )
+            out._save_changes(save_all=True)
+        return out
+
+    def volume_report(self) -> list[VolumeReport]:
+        """Report each volume's signed volume and centroid from its surface mesh.
+
+        Each bounding surface counts +1 for the volume it is the forward volume of
+        and -1 for the volume it is the reverse volume of.
+
+        Returns:
+            One report per volume, in entity order.
+        """
+        with self:
+            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            index = np.zeros(int(node_tags.max()) + 1, dtype=np.int64)
+            index[node_tags.astype(np.int64)] = np.arange(len(node_tags))
+            xyz = coords.reshape(-1, 3)
+
+            surfaces = {t: md for t, (_, md) in _metadata_groups(2).items()}
+            volumes = {t: md for t, (_, md) in _metadata_groups(3).items()}
+            # Per surface: sum of det(a, b, c) / 6 and of det * (a + b + c) / 24.
+            moments: dict[int, tuple[float, np.ndarray]] = {}
+            for _, s in gmsh.model.get_entities(2):
+                _, tri = gmsh.model.mesh.get_elements_by_type(2, s)
+                p = xyz[index[tri.astype(np.int64)]].reshape(-1, 3, 3)
+                det = np.einsum("ij,ij->i", p[:, 0], np.cross(p[:, 1], p[:, 2])) / 6.0
+                moments[s] = (
+                    det.sum(),
+                    (det[:, None] * p.sum(axis=1)).sum(axis=0) / 4.0,
+                )
+
+            reports = []
+            for _, v in gmsh.model.get_entities(3):
+                vol, first = 0.0, np.zeros(3)
+                for s in gmsh.model.get_adjacencies(3, v)[1]:
+                    md = surfaces.get(int(s), {})
+                    sign = (md.get("forward_volume") == str(v)) - (
+                        md.get("reverse_volume") == str(v)
+                    )
+                    vol += sign * moments[int(s)][0]
+                    first += sign * moments[int(s)][1]
+                centroid = first / vol if vol else np.full(3, np.nan)
+                reports.append(
+                    VolumeReport(
+                        tag=int(v),
+                        metadata=volumes.get(v, {}),
+                        volume=float(vol),
+                        centroid=tuple(float(c) for c in centroid),  # pyright: ignore[reportArgumentType]
+                    )
+                )
+            return reports
 
     @overload
     def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...
@@ -627,7 +893,10 @@ class SurfaceMesh(Mesh):
             gmsh.model.add("stellarmesh_model")
 
             # Solids
-            for s, m in zip(geometry.solids, geometry.material_names, strict=True):
+            names = geometry.solid_names or [None] * len(geometry.solids)
+            for s, m, n in zip(
+                geometry.solids, geometry.material_names, names, strict=True
+            ):
                 dim_tags = cls._import_occ(s)
                 gmsh.model.occ.synchronize()
                 if dim_tags[0][0] != 3:
@@ -635,6 +904,8 @@ class SurfaceMesh(Mesh):
 
                 solid_tag = dim_tags[0][1]
                 mesh.entity_metadata(3, solid_tag).material = m
+                if n is not None:
+                    mesh.entity_metadata(3, solid_tag).name = n
 
             # Faces
             for f, bc in zip(

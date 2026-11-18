@@ -74,15 +74,18 @@ class Geometry:
 
     solids: list[TopoDS_Solid]
     material_names: list[str]
+    solid_names: list[str]
     faces: list[TopoDS_Face]
     face_boundary_conditions: list[str]
 
-    def __init__(
+    def __init__(  # noqa: PLR0912
         self,
         solids: Optional[Sequence[Solid | TopoDS_Solid]] = None,
         material_names: Optional[Sequence[str]] = None,
         surfaces: Optional[Sequence[Face | Shell | TopoDS_Face | TopoDS_Shell]] = None,
         surface_boundary_conditions: Optional[Sequence[str]] = None,
+        *,
+        solid_names: Optional[Sequence[str]] = None,
     ):
         """Construct geometry from solids.
 
@@ -94,6 +97,8 @@ class Geometry:
             Face or Shell, or an OCP TopoDS_Face or TopoDS_Shell.
             surface_boundary_conditions: List of boundary condition names. Must match
             length of surfaces.
+            solid_names: Optional name per solid, written to the mesh as volume
+            ``name`` metadata. Must match length of solids.
         """
         if (solids and not material_names) or (material_names and not solids):
             raise ValueError(
@@ -108,6 +113,10 @@ class Geometry:
                 "If surfaces or surface_boundary_conditions are provided"
                 ", both must be provided and match in length."
             )
+
+        if solid_names is not None and len(solid_names) != len(solids or []):
+            raise ValueError("solid_names must match solids in length.")
+        self.solid_names = list(solid_names or [])
 
         self.solids = []
         self.material_names = []
@@ -142,7 +151,7 @@ class Geometry:
                     else getattr(s, "wrapped", None)
                 )
 
-                if s.wrapped is None:  # type: ignore
+                if s_wrapped is None:
                     raise ValueError(
                         f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
                     )
@@ -319,6 +328,9 @@ class Geometry:
     def imprint(self) -> Geometry:
         """Imprint faces of current geometry.
 
+        Solids keep their order, materials and names. Faces and their boundary
+        conditions are passed through un-imprinted.
+
         Returns:
             A new geometry with the imprinted and merged geometry.
         """
@@ -330,12 +342,27 @@ class Geometry:
             bldr.AddArgument(solid)
 
         bldr.Perform()
-        res = bldr.Shape()
-        res_solids = self._get_solids_from_shape(res)
+        if bldr.HasErrors():
+            raise RuntimeError("BOPAlgo_MakeConnected failed.")
 
-        if (l0 := len(res_solids)) != (l1 := len(self.solids)):
-            raise RuntimeError(
-                f"Length of imprinted solids {l0} != length of original solids {l1}"
-            )
+        # The result compound's solid order is not the argument order, so each
+        # input is mapped to its own image.
+        res_solids: list[TopoDS_Solid] = []
+        for i, solid in enumerate(self.solids):
+            images = list(bldr.GetModified(solid))
+            if not images:
+                res_solids.append(solid)
+            elif len(images) == 1:
+                res_solids.append(topods_solid(images[0]))
+            else:
+                raise RuntimeError(
+                    f"Solid {i} split into {len(images)} pieces on imprint."
+                )
 
-        return type(self)(res_solids, self.material_names)
+        return type(self)(
+            res_solids,
+            self.material_names,
+            self.faces or None,
+            self.face_boundary_conditions or None,
+            solid_names=self.solid_names or None,
+        )
