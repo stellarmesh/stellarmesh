@@ -209,6 +209,58 @@ class TestVolumeMesh:
         mesh.write(tmp_path / "out.exo", use_meshio=True)
 
 
+class TestMeshMerge:
+    @pytest.fixture
+    def sphere_meshes(self, model_bd_sphere):
+        options = sm.OCCSurfaceOptions(tol_angular_deg=math.degrees(0.5))
+        left = sm.SurfaceMesh.from_geometry(
+            sm.Geometry(model_bd_sphere, ["a"]), options
+        )
+        moved = [bd.Pos(100, 0, 0) * model_bd_sphere[0]]
+        right = sm.SurfaceMesh.from_geometry(sm.Geometry(moved, ["b"]), options)
+        return left, right
+
+    def test_merge(self, sphere_meshes, tmp_path: Path):
+        left, right = sphere_meshes
+        merged, tag_map = sm.Mesh.merge({"left": left, "right": right})
+
+        with left:
+            max_left_tag = max(t for _, t in gmsh.model.get_entities())
+        right_volume = tag_map["right"][(3, 1)]
+        assert tag_map["left"][(3, 1)] == 1
+        assert right_volume == 10 ** len(str(max_left_tag)) + 1
+
+        with merged:
+            volumes = [t for _, t in gmsh.model.get_entities(3)]
+            surfaces = [t for _, t in gmsh.model.get_entities(2)]
+        assert sorted(volumes) == [1, right_volume]
+        for tag, material in ((1, "a"), (right_volume, "b")):
+            assert merged.entity_metadata(3, tag).material == material
+        for tag in surfaces:
+            assert merged.entity_metadata(2, tag).forward_volume in volumes
+
+        model = sm.DAGMCModel.from_mesh(merged)
+        assert len(model.volumes) == 2
+        model.write(tmp_path / "merged.h5m")
+        report = sm.DAGMCModel.check_watertight(tmp_path / "merged.h5m")
+        assert report
+        assert report.leaky_surfaces == []
+        assert report.leaky_volumes == []
+
+    def test_merge_errors(self, sphere_meshes, geom_bd_sphere):
+        left, right = sphere_meshes
+        unnamed = sm.SurfaceMesh.from_geometry(geom_bd_sphere, sm.OCCSurfaceOptions())
+        with pytest.raises(ValueError, match="without a material"):
+            sm.Mesh.merge({"left": left, "unnamed": unnamed})
+        unnamed.entity_metadata(3, 1).material = "x" * 29
+        with pytest.raises(ValueError, match="longer than"):
+            sm.Mesh.merge({"left": left, "long": unnamed})
+        with pytest.raises(ValueError, match="at least one mesh"):
+            sm.Mesh.merge({})
+        with left, pytest.raises(RuntimeError, match="open context"):
+            sm.Mesh.merge({"left": left, "right": right})
+
+
 class TestMeshUtilities:
     @pytest.fixture
     def model_bd_stellarator_plasma(self):

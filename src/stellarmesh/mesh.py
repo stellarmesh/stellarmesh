@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal, Optional, get_type_hints, overload
+from typing import Any, Literal, Optional, Self, get_type_hints, overload
 from urllib.parse import parse_qs, urlencode
 
 import meshio
@@ -68,6 +68,24 @@ except ImportError as e:
 
 
 logger = logging.getLogger(__name__)
+
+# MOAB NAME tags hold 32 characters and DAGMC prefixes material groups with "mat:".
+MAX_MATERIAL_LENGTH = 28
+
+
+def _parse_metadata(name: str) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(name).items()}
+
+
+def _metadata_groups(dim: int) -> dict[int, tuple[int, dict[str, str]]]:
+    """Entity tag -> (group tag, parsed name) for each single-entity group of dim."""
+    out: dict[int, tuple[int, dict[str, str]]] = {}
+    for _, pg in gmsh.model.get_physical_groups(dim):
+        entities = gmsh.model.get_entities_for_physical_group(dim, pg)
+        if len(entities) == 1:
+            name = gmsh.model.get_physical_name(dim, pg)
+            out[int(entities[0])] = (pg, _parse_metadata(name))
+    return out
 
 
 class GmshSurfaceAlgo(Enum):
@@ -475,6 +493,118 @@ class Mesh:
             finally:
                 gmsh.fltk.finalize()
             return output_filename
+
+    @classmethod
+    def merge(  # noqa: PLR0912, PLR0915
+        cls,
+        meshes: Mapping[str, Mesh],
+    ) -> tuple[Self, dict[str, dict[tuple[int, int], int]]]:
+        """Merge meshes into one, keeping each input's entities and metadata.
+
+        The first input keeps its tags. Each later input's entity tags are offset by
+        the next power of ten above the largest entity tag merged so far; node and
+        element tags by the running maxima. Metadata tags and surface volume senses
+        are rewritten to the offset tags. Only single-entity (metadata) physical
+        groups of surfaces and volumes are copied. Nothing is imprinted: inputs must
+        not overlap or share surfaces.
+
+        Args:
+            meshes: Input meshes by label. Their contexts must be closed.
+
+        Raises:
+            ValueError: If no meshes are given, or a merged volume has no material or
+                one longer than `MAX_MATERIAL_LENGTH`.
+            RuntimeError: If an input has an open context.
+
+        Returns:
+            Merged mesh, and per label a map from ``(dim, original_tag)`` to the
+            merged tag for surfaces and volumes.
+        """
+        if not meshes:
+            raise ValueError("merge needs at least one mesh.")
+        for label, mesh in meshes.items():
+            if mesh._ref_count > 0:
+                raise RuntimeError(f"Mesh {label!r} has an open context.")
+
+        with cls() as out:
+            out_model = gmsh.model.get_current()
+            tag_maps: dict[str, dict[tuple[int, int], int]] = {}
+            missing: list[tuple[str, int]] = []
+            too_long: list[tuple[str, int, str]] = []
+            for i, (label, mesh) in enumerate(meshes.items()):
+                if i == 0:
+                    offset = node_offset = element_offset = 0
+                else:
+                    max_tag = max((t for _, t in gmsh.model.get_entities()), default=0)
+                    offset = 10 ** len(str(max_tag))
+                    node_offset = int(gmsh.model.mesh.get_max_node_tag())
+                    element_offset = int(gmsh.model.mesh.get_max_element_tag())
+
+                gmsh.model.add(f"stellarmesh_merge_input_{i}")
+                gmsh.merge(mesh._mesh_filename)
+                entities = []
+                for dim in range(4):
+                    for _, tag in gmsh.model.get_entities(dim):
+                        boundary = [
+                            abs(int(b)) for b in gmsh.model.get_adjacencies(dim, tag)[1]
+                        ]
+                        nodes = gmsh.model.mesh.get_nodes(dim, tag)[:2]
+                        elements = gmsh.model.mesh.get_elements(dim, tag)
+                        entities.append((dim, tag, boundary, nodes, elements))
+                metadata = {dim: _metadata_groups(dim) for dim in (2, 3)}
+                gmsh.model.remove()
+                gmsh.model.set_current(out_model)
+
+                for dim, tag, boundary, nodes, elements in entities:
+                    new_tag = tag + offset
+                    gmsh.model.add_discrete_entity(
+                        dim, new_tag, [b + offset for b in boundary]
+                    )
+                    if nodes is not None and len(nodes[0]):
+                        gmsh.model.mesh.add_nodes(
+                            dim, new_tag, nodes[0] + node_offset, nodes[1]
+                        )
+                    if elements is not None and len(elements[0]):
+                        types, element_tags, element_nodes = elements
+                        gmsh.model.mesh.add_elements(
+                            dim,
+                            new_tag,
+                            types,
+                            [t + element_offset for t in element_tags],
+                            [n + node_offset for n in element_nodes],
+                        )
+
+                tag_map: dict[tuple[int, int], int] = {}
+                for dim in (2, 3):
+                    groups = metadata[dim]
+                    for _, tag, *_ in (e for e in entities if e[0] == dim):
+                        data = dict(groups[tag][1]) if tag in groups else {}
+                        new_tag = tag + offset
+                        data["tag"] = str(new_tag)
+                        for key in ("forward_volume", "reverse_volume"):
+                            if data.get(key, "None") != "None":
+                                data[key] = str(int(data[key]) + offset)
+                        if dim == 3:
+                            material = data.get("material", "None")
+                            if material in ("", "None"):
+                                missing.append((label, tag))
+                            elif len(material) > MAX_MATERIAL_LENGTH:
+                                too_long.append((label, tag, material))
+                        gmsh.model.add_physical_group(
+                            dim, [new_tag], new_tag, urlencode(data)
+                        )
+                        tag_map[(dim, tag)] = new_tag
+                tag_maps[label] = tag_map
+
+            if missing:
+                raise ValueError(f"Volumes without a material: {missing}")
+            if too_long:
+                raise ValueError(
+                    f"Materials longer than {MAX_MATERIAL_LENGTH} characters: "
+                    f"{too_long}"
+                )
+            out._save_changes(save_all=True)
+        return out, tag_maps
 
     @overload
     def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...
