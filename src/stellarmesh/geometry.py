@@ -319,6 +319,9 @@ class Geometry:
     def imprint(self) -> Geometry:
         """Imprint faces of current geometry.
 
+        Solids keep their order and materials. Faces and their boundary conditions
+        are passed through without modification.
+
         Returns:
             A new geometry with the imprinted and merged geometry.
         """
@@ -330,12 +333,25 @@ class Geometry:
             bldr.AddArgument(solid)
 
         bldr.Perform()
-        res = bldr.Shape()
-        res_solids = self._get_solids_from_shape(res)
+        if bldr.HasErrors():
+            raise RuntimeError("BOPAlgo_MakeConnected failed.")
 
-        if (l0 := len(res_solids)) != (l1 := len(self.solids)):
-            raise RuntimeError(
-                f"Length of imprinted solids {l0} != length of original solids {l1}"
-            )
+        # We must manually return solids in argument order
+        res_solids: list[TopoDS_Solid] = []
+        for i, solid in enumerate(self.solids):
+            images = list(bldr.GetModified(solid))
+            if not images:
+                res_solids.append(solid)
+            elif len(images) == 1:
+                res_solids.append(topods_solid(images[0]))
+            else:
+                raise RuntimeError(
+                    f"Solid {i} split into {len(images)} pieces on imprint."
+                )
 
-        return type(self)(res_solids, self.material_names)
+        return type(self)(
+            res_solids,
+            self.material_names,
+            self.faces or None,
+            self.face_boundary_conditions or None,
+        )
