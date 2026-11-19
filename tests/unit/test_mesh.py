@@ -269,5 +269,5 @@ class TestMeshUtilities:
     def test_render_without_display(self, monkeypatch):
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-        with pytest.raises(RuntimeError, match="xvfb-run"):
+        with pytest.raises(RuntimeError, match="virtual framebuffer"):
             sm.Mesh().render()
