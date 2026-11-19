@@ -11,6 +11,8 @@ from pathlib import Path
 import build123d as bd
 import gmsh
 import numpy as np
+import pymoab.core
+import pymoab.types
 import pytest
 from PIL import Image
 
@@ -235,10 +237,46 @@ class TestMeshUtilities:
                 capture_output=True,
                 text=True,
             )
-            return result.stdout
+            report = sm.DAGMCModel.check_overlap("dagmc.h5m", points_per_edge=5)
+            return result.stdout, report
 
-        assert "No overlaps were found" in check_overlap(2.5)
-        assert "Overlap Location:" in check_overlap(5)
+        stdout, report = check_overlap(2.5)
+        assert "No overlaps were found" in stdout
+        assert report
+        stdout, report = check_overlap(5)
+        assert "Overlap Location:" in stdout
+        assert not report
+        assert report.overlaps
+        assert all(len(volumes) >= 2 for _, volumes in report.overlaps)
+
+    def test_check_watertight(self, geom_bd_layered_torus, tmp_path: Path):
+        mesh = sm.SurfaceMesh.from_geometry(
+            geom_bd_layered_torus.imprint(), sm.OCCSurfaceOptions(tol_angular_deg=5)
+        )
+        sm.DAGMCModel.from_mesh(mesh).write(tmp_path / "ok.h5m")
+
+        core = pymoab.core.Core()
+        core.load_file(str(tmp_path / "ok.h5m"))
+        model = sm.DAGMCModel(core)
+        surface = model.volumes[0].adjacent_surfaces[0]
+        parents = core.get_parent_meshsets(surface.handle)
+        expected_volumes = sorted(
+            int(sm.DAGMCVolume(model, p).global_id) for p in parents
+        )
+        triangle = core.get_entities_by_type(surface.handle, pymoab.types.MBTRI)[0]
+        core.remove_entities(surface.handle, [triangle])
+        core.delete_entities([triangle])
+        core.write_file(str(tmp_path / "leaky.h5m"))
+
+        report = sm.DAGMCModel.check_watertight(tmp_path / "ok.h5m")
+        assert report
+        assert (report.leaky_surfaces, report.leaky_volumes) == ([], [])
+
+        # One missing triangle opens a hole in one surface and both its volumes.
+        report = sm.DAGMCModel.check_watertight(tmp_path / "leaky.h5m")
+        assert not report
+        assert report.leaky_surfaces == [surface.global_id]
+        assert report.leaky_volumes == expected_volumes
 
     def test_gmsh_threads(self, geom_bd_layered_torus, tmp_path: Path):
         mesh = sm.SurfaceMesh.from_geometry(

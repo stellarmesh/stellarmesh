@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import warnings
+from dataclasses import dataclass
 from functools import cached_property
 from typing import Final, Optional, Union
 
@@ -40,6 +42,60 @@ except ImportError as e:
     ) from e
 
 logger = logging.getLogger(__name__)
+
+
+_INT = re.compile(r"-?\d+")
+
+
+@dataclass(frozen=True)
+class WatertightReport:
+    """Result of `DAGMCModel.check_watertight`; truthy if the model is watertight.
+
+    Attributes:
+        leaky_surfaces: Global IDs of surfaces with an unpaired triangle edge.
+        leaky_volumes: Global IDs of volumes with a leaky surface.
+    """
+
+    leaky_surfaces: list[int]
+    leaky_volumes: list[int]
+
+    def __bool__(self) -> bool:
+        """Watertight verdict."""
+        return not self.leaky_surfaces and not self.leaky_volumes
+
+
+@dataclass(frozen=True)
+class OverlapReport:
+    """Result of DAGMC ``overlap_check``; truthy if no overlaps were found.
+
+    Attributes:
+        output: Tool stdout.
+        overlaps: One entry per distinct set of overlapping volumes: a location where
+            they overlap and their global IDs. ``overlap_check`` keeps one location
+            per set, so this is not a count of overlapping points.
+    """
+
+    output: str
+    overlaps: list[tuple[tuple[float, float, float], tuple[int, ...]]]
+
+    def __bool__(self) -> bool:
+        """No-overlap verdict, requiring the tool's explicit all-clear line."""
+        return not self.overlaps and "No overlaps were found." in self.output
+
+    @classmethod
+    def parse(cls, output: str) -> OverlapReport:
+        """Parse ``overlap_check`` stdout."""
+        overlaps = []
+        location: Optional[tuple[float, float, float]] = None
+        for line in output.splitlines():
+            if line.startswith("Overlap Location:"):
+                x, y, z = (float(v) for v in line.split(":", 1)[1].split())
+                location = (x, y, z)
+            elif line.startswith("Overlapping volumes:") and location is not None:
+                volumes = tuple(int(v) for v in _INT.findall(line.split(":", 1)[1]))
+                overlaps.append((location, volumes))
+                location = None
+        return cls(output, overlaps)
 
 
 class EntitySet:
@@ -627,7 +683,7 @@ class DAGMCModel(MOABModel):
         binary_path: str = "overlap_check",
         points_per_edge: int = 0,
         num_threads: int = 1,
-    ) -> bool:
+    ) -> OverlapReport:
         """Check mesh for overlaps.
 
         Args:
@@ -640,7 +696,7 @@ class DAGMCModel(MOABModel):
             num_threads: Number of threads.
 
         Returns:
-            True if no overlaps are found, else False.
+            Report, truthy if no overlaps are found.
         """
         out = subprocess.run(
             [
@@ -655,34 +711,60 @@ class DAGMCModel(MOABModel):
             text=True,
             check=True,
         )
-        return "No overlaps were found." in out.stdout.splitlines()
+        return OverlapReport.parse(out.stdout)
 
-    @staticmethod
-    def check_watertight(
-        input_filename: PathLike,
-        binary_path: str = "check_watertight",
-    ):
-        """Check mesh for watertightness.
+    @classmethod
+    def check_watertight(cls, input_filename: PathLike) -> WatertightReport:
+        """Check that each volume's surfaces close up.
+
+        Within each volume, every triangle edge must be used exactly twice, with
+        edges matched by vertex handle: the topological check of DAGMC
+        ``check_watertight``. A file that duplicates vertices where surfaces meet
+        reads as leaky; stellarmesh writes each mesh node once.
+
+        DAGMC's CLI runs that check only when given ``-t``. Without it, it matches
+        edges by proximity with a 1-unit tolerance, so sub-unit holes pass (see
+        https://github.com/svalinn/DAGMC/blob/develop/src/make_watertight/app/check_watertight.cpp).
 
         Args:
             input_filename: Input .h5m filename.
-            binary_path: Path to overlap_check or default to find in path. Defaults to
-            "check_watertight".
 
         Returns:
-            True if mesh is watertight, else False.
+            Report, truthy if the mesh is watertight.
         """
-        out = subprocess.run(
-            [binary_path, str(input_filename)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        output_lines = out.stdout.splitlines()
-        for line in output_lines:
-            if ("leaky surface ids=" in line) or ("leaky volume ids=" in line):
-                return line.strip().endswith("=")
-        return False
+        model = cls(input_filename)
+        core = model._core
+        leaky_surfaces: set[int] = set()
+        leaky_volumes: list[int] = []
+        for volume in model.volumes:
+            edges, owners = [], []
+            for surface in volume.adjacent_surfaces:
+                triangles = core.get_entities_by_type(
+                    surface.handle, pymoab.types.MBTRI
+                )
+                conn = np.asarray(core.get_connectivity(triangles)).reshape(-1, 3)
+                # Triangles with a repeated vertex (OCC leaves them at sphere poles)
+                # have no area, so they neither close nor open the surface.
+                conn = conn[
+                    (conn[:, 0] != conn[:, 1])
+                    & (conn[:, 1] != conn[:, 2])
+                    & (conn[:, 2] != conn[:, 0])
+                ]
+                pairs = np.concatenate(
+                    [conn[:, [0, 1]], conn[:, [1, 2]], conn[:, [2, 0]]]
+                )
+                edges.append(np.sort(pairs, axis=1))
+                owners.append(np.full(len(pairs), surface.global_id))
+            if not edges:
+                continue
+            _, inverse, counts = np.unique(
+                np.concatenate(edges), axis=0, return_inverse=True, return_counts=True
+            )
+            unpaired = counts[inverse.ravel()] != 2
+            if unpaired.any():
+                leaky_volumes.append(int(volume.global_id))
+                leaky_surfaces.update(np.concatenate(owners)[unpaired].tolist())
+        return WatertightReport(sorted(leaky_surfaces), sorted(leaky_volumes))
 
     @classmethod
     def from_mesh(
