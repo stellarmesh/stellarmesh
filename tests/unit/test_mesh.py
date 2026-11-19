@@ -1,6 +1,7 @@
 """Meshing tests."""
 
 import copy
+import gc
 import importlib.resources
 import math
 import subprocess
@@ -240,3 +241,11 @@ class TestMeshUtilities:
             geom_bd_layered_torus,
             sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2, num_threads=8),
         )
+
+    def test_temp_file_deleted(self):
+        mesh = sm.Mesh()
+        path = Path(mesh._mesh_filename)
+        assert path.exists()
+        del mesh
+        gc.collect()
+        assert not path.exists()
