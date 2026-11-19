@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import weakref
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -414,21 +415,31 @@ class Mesh:
             else:
                 gmsh.write(str(filename))
 
-    def render(
+    def render(  # noqa: PLR0913
         self,
         output_filename: Optional[str] = None,
         rotation_xyz: tuple[float, float, float] = (0, 0, 0),
         normals: int = 0,
         *,
         clipping: bool = True,
+        options: Optional[Mapping[str, float]] = None,
+        size: Optional[tuple[int, int]] = None,
     ) -> str:
         """Render mesh as an image.
+
+        Gmsh's OpenGL context and a PyVista off-screen context must not share a
+        process: together they abort in Mesa's LLVM backend. Callers that also use
+        PyVista should render in a subprocess.
 
         Args:
             output_filename: Optional output filename. Defaults to None.
             rotation_xyz: Rotation in Euler angles. Defaults to (0, 0, 0).
             normals: Normal render size. Defaults to 0.
             clipping: Whether to enable mesh clipping. Defaults to True.
+            options: Gmsh numeric options (e.g. ``{"Mesh.SurfaceEdges": 0}``),
+                applied after the defaults set by this method.
+            size: Gmsh window (width, height) in pixels. The image is narrower by
+                ``General.MenuWidth`` (200 by default).
 
         Returns:
             Path to image file, either passed output_filename or a temporary file.
@@ -442,6 +453,11 @@ class Mesh:
             gmsh.option.set_number("General.RotationX", rotation_xyz[0])
             gmsh.option.set_number("General.RotationY", rotation_xyz[1])
             gmsh.option.set_number("General.RotationZ", rotation_xyz[2])
+            for key, value in (options or {}).items():
+                gmsh.option.set_number(key, value)
+            if size is not None:
+                gmsh.option.set_number("General.GraphicsWidth", size[0])
+                gmsh.option.set_number("General.GraphicsHeight", size[1])
             if not output_filename:
                 with tempfile.NamedTemporaryFile(
                     delete=False, mode="w", suffix=".png"
@@ -450,6 +466,9 @@ class Mesh:
 
             try:
                 gmsh.fltk.initialize()
+                # Without an explicit draw, the capture can precede the first frame
+                # and come back blank.
+                gmsh.graphics.draw()
                 gmsh.write(output_filename)
             finally:
                 gmsh.fltk.finalize()
