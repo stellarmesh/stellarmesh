@@ -43,6 +43,13 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+# Gmsh element type -> (MOAB type, nodes per element) for the elements written.
+_MOAB_ELEMENT_TYPES: Final = {
+    2: (pymoab.types.MBTRI, 3),
+    4: (pymoab.types.MBTET, 4),
+    5: (pymoab.types.MBHEX, 8),
+}
+
 
 @dataclass(frozen=True)
 class WatertightReport:
@@ -496,9 +503,27 @@ class MOABModel:
             self.root_set, pymoab.types.MBTRI, recur=True
         )
 
-    def _add_nodes(self) -> dict[int, int]:
-        """Generic node addition logic shared by all MOAB-based models."""
+    def _add_nodes(self, dim: int) -> dict[int, int]:
+        """Add the nodes of the elements `_create_elements` writes for a dimension.
+
+        Nodes used by no such element, such as volume-interior nodes when only
+        triangles are written, are skipped.
+
+        Args:
+            dim: Dimension of the elements that will be created.
+
+        Returns:
+            Map from Gmsh node tag to MOAB vertex handle.
+        """
         node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+        element_types, _, element_nodes = gmsh.model.mesh.get_elements(dim)
+        used_nodes = [
+            nodes
+            for element_type, nodes in zip(element_types, element_nodes, strict=True)
+            if element_type in _MOAB_ELEMENT_TYPES
+        ]
+        used = np.isin(node_tags, np.concatenate([*used_nodes, []]))
+        node_tags, coords = node_tags[used], coords.reshape(-1, 3)[used].ravel()
         if len(node_tags) != len(np.unique(node_tags)):
             raise ValueError("Duplicate node tags found.")
         if np.isnan(coords).any():
@@ -519,15 +544,9 @@ class MOABModel:
         all_new_handles = []
 
         for elem_type, node_tags in zip(element_types, node_tags_list, strict=True):
-            # Map Gmsh types to MOAB types
-            if elem_type == 2:  # Triangle
-                moab_type, nodes_per_elem = pymoab.types.MBTRI, 3
-            elif elem_type == 4:  # Tet
-                moab_type, nodes_per_elem = pymoab.types.MBTET, 4
-            elif elem_type == 5:  # Hex
-                moab_type, nodes_per_elem = pymoab.types.MBHEX, 8
-            else:
+            if elem_type not in _MOAB_ELEMENT_TYPES:
                 continue
+            moab_type, nodes_per_elem = _MOAB_ELEMENT_TYPES[elem_type]
 
             conn = np.array(
                 [node_tag_map[t] for t in node_tags], dtype=np.uint64
@@ -775,7 +794,7 @@ class DAGMCModel(MOABModel):
 
             gmsh.model.mesh.removeDuplicateNodes()
 
-            node_tag_map = model._add_nodes()
+            node_tag_map = model._add_nodes(dim=2)
             surface_map = model._add_surfaces(mesh, node_tag_map)
             model._add_volumes(mesh, surface_map)
             model._finalize_file_set()
@@ -936,7 +955,7 @@ class MOABVolumeModel(MOABModel):
         model = cls(core)
         with mesh:
             gmsh.model.mesh.removeDuplicateNodes()
-            node_map = model._add_nodes()
+            node_map = model._add_nodes(dim=3)
 
             # Simply add all 3D elements to the root set
             for _, tag in gmsh.model.get_entities(3):

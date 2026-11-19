@@ -1,4 +1,6 @@
 import build123d as bd
+import gmsh
+import numpy as np
 import pytest
 import stellarmesh as sm
 from pymoab.rng import Range
@@ -44,6 +46,54 @@ class TestDAGMCModel:
 
     def test_tets(self, dagmc_model):
         assert dagmc_model.tets.empty()
+
+    def test_volume_mesh_adds_surface_vertices_only(self, geom_bd_sphere):
+        mesh = sm.VolumeMesh.from_geometry(
+            geom_bd_sphere, sm.GmshVolumeOptions(max_mesh_size=5)
+        )
+        model = sm.DAGMCModel.from_mesh(mesh)
+        with mesh:
+            nodes = gmsh.model.mesh.get_nodes()[0]
+            surface_nodes = np.unique(gmsh.model.mesh.get_elements_by_type(2)[1])
+        assert len(surface_nodes) < len(nodes)
+        assert len(model._core.get_entities_by_dimension(0, 0)) == len(surface_nodes)
+
+    def test_adds_nodes_of_embedded_points(self):
+        # Nodes of a point embedded in a surface are used by its triangles but are
+        # not classified on the surface or its boundary.
+        mesh = sm.Mesh()
+        with mesh:
+            gmsh.model.occ.add_box(0, 0, 0, 10, 10, 10)
+            point = gmsh.model.occ.add_point(5, 5, 0)
+            gmsh.model.occ.synchronize()
+            bottom = gmsh.model.get_entities_in_bounding_box(-1, -1, -1, 11, 11, 1, 2)
+            gmsh.model.mesh.embed(0, [point], 2, bottom[0][1])
+            gmsh.option.set_number("Mesh.MeshSizeMax", 4)
+            gmsh.model.mesh.generate(2)
+            surface_nodes = np.unique(gmsh.model.mesh.get_elements_by_type(2)[1])
+            mesh._dirty = True
+        model = sm.DAGMCModel.from_mesh(mesh)
+        assert len(model._core.get_entities_by_dimension(0, 0)) == len(surface_nodes)
+
+    @pytest.mark.parametrize("extra", ["orphan_node", "quad"])
+    def test_skips_surface_nodes_without_triangles(self, geom_bd_sphere, extra):
+        mesh = sm.SurfaceMesh.from_geometry(
+            geom_bd_sphere, sm.GmshSurfaceOptions(max_mesh_size=5)
+        )
+        with mesh:
+            surface = gmsh.model.get_entities(2)[0][1]
+            surface_nodes = np.unique(gmsh.model.mesh.get_elements_by_type(2)[1])
+            first = int(gmsh.model.mesh.get_max_node_tag()) + 1
+            if extra == "orphan_node":
+                gmsh.model.mesh.add_nodes(2, surface, [first], [0.0, 0.0, 0.0])
+            else:
+                quad = list(range(first, first + 4))
+                coords = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]
+                gmsh.model.mesh.add_nodes(2, surface, quad, coords)
+                gmsh.model.mesh.add_elements_by_type(surface, 3, [], quad)
+            mesh._dirty = True
+        model = sm.DAGMCModel.from_mesh(mesh)
+        assert len(model._core.get_entities_by_dimension(0, 0)) == len(surface_nodes)
 
     def test_triangles(self, dagmc_model):
         all_tris = dagmc_model.triangles
@@ -138,3 +188,16 @@ class TestMOABVolumeModel:
 
     def test_tet_count_reasonable(self, volume_model):
         assert len(volume_model.tets) > 100
+
+    def test_skips_nodes_without_elements(self, geom_bd_sphere):
+        mesh = sm.VolumeMesh.from_geometry(
+            geom_bd_sphere, sm.GmshVolumeOptions(max_mesh_size=5)
+        )
+        with mesh:
+            tet_nodes = np.unique(gmsh.model.mesh.get_elements_by_type(4)[1])
+            orphan = int(gmsh.model.mesh.get_max_node_tag()) + 1
+            gmsh.model.add_discrete_entity(0, 999)
+            gmsh.model.mesh.add_nodes(0, 999, [orphan], [100.0, 0, 0])
+            mesh._dirty = True
+        model = sm.MOABVolumeModel.from_mesh(mesh)
+        assert len(model._core.get_entities_by_dimension(0, 0)) == len(tet_nodes)
