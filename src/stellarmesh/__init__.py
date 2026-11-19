@@ -14,6 +14,7 @@ from .mesh import (
     OCCSurfaceOptions,
     SurfaceMesh,
     VolumeMesh,
+    VolumeReport,
 )
 from .moab import (
     DAGMCModel,
@@ -42,6 +43,7 @@ __all__ = [
     "OverlapReport",
     "SurfaceMesh",
     "VolumeMesh",
+    "VolumeReport",
     "WatertightReport",
 ]
 

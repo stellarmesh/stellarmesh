@@ -27,7 +27,7 @@ Volume groups
   the same file).
 * ``material`` — a slug identifying the volume's material region.
   Slugs are bounded to **28 characters** (a hard MOAB limit downstream
-  in the DAGMC pipeline). 
+  in the DAGMC pipeline).
 
 Every volume entity in the file must carry exactly one such physical
 group.
@@ -42,8 +42,9 @@ Surface groups
 * ``tag`` — the surface's Gmsh tag.
 * ``forward_volume`` — the volume tag on the surface's outward-normal
   side.
-* ``reverse_volume`` — the volume tag on the other side. Use ``0`` for
-  exterior surfaces (boundary of the model with vacuum).
+* ``reverse_volume`` — the volume tag on the other side. Use ``None``
+  (or omit the key) for exterior surfaces (boundary of the model with
+  vacuum).
 
 Edges and vertices
 ==================

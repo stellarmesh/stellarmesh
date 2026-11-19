@@ -70,6 +70,21 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+def _parse_metadata(name: str) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(name).items()}
+
+
+def _metadata_groups(dim: int) -> dict[int, tuple[int, dict[str, str]]]:
+    """Entity tag -> (group tag, parsed name) for each single-entity group of dim."""
+    out: dict[int, tuple[int, dict[str, str]]] = {}
+    for _, pg in gmsh.model.get_physical_groups(dim):
+        entities = gmsh.model.get_entities_for_physical_group(dim, pg)
+        if len(entities) == 1:
+            name = gmsh.model.get_physical_name(dim, pg)
+            out[int(entities[0])] = (pg, _parse_metadata(name))
+    return out
+
+
 class GmshSurfaceAlgo(Enum):
     """Algorithm used by Gmsh for surface meshing."""
 
@@ -316,6 +331,25 @@ class VolumeMetadata(EntityMetadata):
     material: str = field(init=False)
 
 
+@dataclass(frozen=True)
+class VolumeReport:
+    """Volume and centroid of a mesh volume, from its bounding triangles.
+
+    Attributes:
+        tag: Volume tag.
+        metadata: Metadata keys of the volume, as stored in its group name.
+        volume: Signed volume. Positive when triangle normals point out of the
+            surfaces' forward volume; negative for inverted senses; ~0 for an open
+            boundary.
+        centroid: Centroid, NaN when the volume is 0.
+    """
+
+    tag: int
+    metadata: dict[str, str]
+    volume: float
+    centroid: tuple[float, float, float]
+
+
 class Mesh:
     """A Gmsh mesh.
 
@@ -475,6 +509,55 @@ class Mesh:
             finally:
                 gmsh.fltk.finalize()
             return output_filename
+
+    def volume_report(self) -> list[VolumeReport]:
+        """Report each volume's signed volume and centroid from its surface mesh.
+
+        Each bounding surface counts +1 for the volume it is the forward volume of
+        and -1 for the volume it is the reverse volume of.
+
+        Returns:
+            One report per volume, in entity order.
+        """
+        with self:
+            node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+            index = np.zeros(int(node_tags.max()) + 1, dtype=np.int64)
+            index[node_tags.astype(np.int64)] = np.arange(len(node_tags))
+            xyz = coords.reshape(-1, 3)
+
+            surfaces = {t: md for t, (_, md) in _metadata_groups(2).items()}
+            volumes = {t: md for t, (_, md) in _metadata_groups(3).items()}
+            # Per surface: sum of det(a, b, c) / 6 and of det * (a + b + c) / 24.
+            moments: dict[int, tuple[float, np.ndarray]] = {}
+            for _, s in gmsh.model.get_entities(2):
+                _, tri = gmsh.model.mesh.get_elements_by_type(2, s)
+                p = xyz[index[tri.astype(np.int64)]].reshape(-1, 3, 3)
+                det = np.einsum("ij,ij->i", p[:, 0], np.cross(p[:, 1], p[:, 2])) / 6.0
+                moments[s] = (
+                    det.sum(),
+                    (det[:, None] * p.sum(axis=1)).sum(axis=0) / 4.0,
+                )
+
+            reports = []
+            for _, v in gmsh.model.get_entities(3):
+                vol, first = 0.0, np.zeros(3)
+                for s in gmsh.model.get_adjacencies(3, v)[1]:
+                    md = surfaces.get(int(s), {})
+                    sign = (md.get("forward_volume") == str(v)) - (
+                        md.get("reverse_volume") == str(v)
+                    )
+                    vol += sign * moments[int(s)][0]
+                    first += sign * moments[int(s)][1]
+                centroid = first / vol if vol else np.full(3, np.nan)
+                reports.append(
+                    VolumeReport(
+                        tag=int(v),
+                        metadata=volumes.get(v, {}),
+                        volume=float(vol),
+                        centroid=tuple(float(c) for c in centroid),  # pyright: ignore[reportArgumentType]
+                    )
+                )
+            return reports
 
     @overload
     def entity_metadata(self, dim: Literal[2], tag: int) -> SurfaceMetadata: ...

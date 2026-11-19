@@ -284,6 +284,25 @@ class TestMeshUtilities:
             sm.GmshSurfaceOptions(min_mesh_size=0.5, max_mesh_size=2, num_threads=8),
         )
 
+    def test_volume_report(self):
+        radius, centre = 10.0, (5.0, -3.0, 2.0)
+        sphere = bd.Pos(*centre) * bd.Solid.make_sphere(radius)
+        mesh = sm.SurfaceMesh.from_geometry(
+            sm.Geometry([sphere], ["a"]), sm.OCCSurfaceOptions(tol_angular_deg=5)
+        )
+        (report,) = mesh.volume_report()
+        assert report.metadata["material"] == "a"
+        assert report.volume == pytest.approx(4 / 3 * math.pi * radius**3, rel=0.01)
+        assert math.dist(report.centroid, centre) < 0.01 * radius
+
+    def test_volume_report_shared_surface(self, geom_bd_nestedspheres):
+        mesh = sm.SurfaceMesh.from_geometry(
+            geom_bd_nestedspheres, sm.OCCSurfaceOptions(tol_angular_deg=5)
+        )
+        volumes = sorted(r.volume for r in mesh.volume_report())
+        expected = sorted([4 / 3 * math.pi * 5**3, 4 / 3 * math.pi * (10**3 - 5**3)])
+        assert volumes == pytest.approx(expected, rel=0.01)
+
     def test_temp_file_deleted(self):
         mesh = sm.Mesh()
         path = Path(mesh._mesh_filename)
