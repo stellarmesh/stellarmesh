@@ -44,12 +44,9 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
-_INT = re.compile(r"-?\d+")
-
-
 @dataclass(frozen=True)
 class WatertightReport:
-    """Result of `DAGMCModel.check_watertight`; truthy if the model is watertight.
+    """Result of watertightness check.
 
     Attributes:
         leaky_surfaces: Global IDs of surfaces with an unpaired triangle edge.
@@ -66,13 +63,12 @@ class WatertightReport:
 
 @dataclass(frozen=True)
 class OverlapReport:
-    """Result of DAGMC ``overlap_check``; truthy if no overlaps were found.
+    """Result of DAGMC ``overlap_check``.
 
     Attributes:
         output: Tool stdout.
-        overlaps: One entry per distinct set of overlapping volumes: a location where
-            they overlap and their global IDs. ``overlap_check`` keeps one location
-            per set, so this is not a count of overlapping points.
+        overlaps: One entry per unique set of overlapping volumes:
+        (location, global IDs)
     """
 
     output: str
@@ -92,7 +88,8 @@ class OverlapReport:
                 x, y, z = (float(v) for v in line.split(":", 1)[1].split())
                 location = (x, y, z)
             elif line.startswith("Overlapping volumes:") and location is not None:
-                volumes = tuple(int(v) for v in _INT.findall(line.split(":", 1)[1]))
+                _int = re.compile(r"-?\d+")
+                volumes = tuple(int(v) for v in _int.findall(line.split(":", 1)[1]))
                 overlaps.append((location, volumes))
                 location = None
         return cls(output, overlaps)
@@ -696,7 +693,7 @@ class DAGMCModel(MOABModel):
             num_threads: Number of threads.
 
         Returns:
-            Report, truthy if no overlaps are found.
+            Overlap report. report == True when mesh is free of overlaps.
         """
         out = subprocess.run(
             [
@@ -717,20 +714,13 @@ class DAGMCModel(MOABModel):
     def check_watertight(cls, input_filename: PathLike) -> WatertightReport:
         """Check that each volume's surfaces close up.
 
-        Within each volume, every triangle edge must be used exactly twice, with
-        edges matched by vertex handle: the topological check of DAGMC
-        ``check_watertight``. A file that duplicates vertices where surfaces meet
-        reads as leaky; stellarmesh writes each mesh node once.
-
-        DAGMC's CLI runs that check only when given ``-t``. Without it, it matches
-        edges by proximity with a 1-unit tolerance, so sub-unit holes pass (see
-        https://github.com/svalinn/DAGMC/blob/develop/src/make_watertight/app/check_watertight.cpp).
+        This check is equivalent to the topological check of DAGMC ``check_watertight``.
 
         Args:
             input_filename: Input .h5m filename.
 
         Returns:
-            Report, truthy if the mesh is watertight.
+            Watertight report. report == True when mesh is watertight.
         """
         model = cls(input_filename)
         core = model._core
