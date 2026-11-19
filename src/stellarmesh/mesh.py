@@ -13,6 +13,7 @@ import math
 import shutil
 import subprocess
 import tempfile
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -327,14 +328,17 @@ class Mesh:
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
-        Mesh operations are saved only to a temporary file. Persist changes externally
-        with the Mesh `write` method.
+        Mesh operations are saved in a temp file. Persist changes externally with the
+        Mesh `write` method.
 
         Args:
             mesh_filename: Optional .msh file to load. Defaults to None.
         """
         with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp_file:
             self._mesh_filename = tmp_file.name
+        weakref.finalize(
+            self, lambda path: Path(path).unlink(missing_ok=True), self._mesh_filename
+        )
 
         if mesh_filename:
             shutil.copy2(str(mesh_filename), self._mesh_filename)
