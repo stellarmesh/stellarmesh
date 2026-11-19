@@ -328,7 +328,8 @@ class Mesh:
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
-        Mesh operations are saved in a temp file. Persist changes externally with the Mesh `write` method.
+        Mesh operations are saved in a temp file. Persist changes externally with the
+        Mesh `write` method.
 
         Args:
             mesh_filename: Optional .msh file to load. Defaults to None.
