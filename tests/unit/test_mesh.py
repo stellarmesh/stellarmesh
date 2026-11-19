@@ -15,6 +15,7 @@ import pytest
 from PIL import Image
 
 import stellarmesh as sm
+
 from .. import resources
 
 

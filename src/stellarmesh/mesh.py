@@ -428,10 +428,6 @@ class Mesh:
     ) -> str:
         """Render mesh as an image.
 
-        Gmsh renders through an on-screen window, so a display is required. On a
-        headless machine, run under ``xvfb-run -a`` or wrap the call in a
-        ``pyvirtualdisplay.Display``.
-
         Args:
             output_filename: Optional output filename. Defaults to None.
             rotation_xyz: Rotation in Euler angles. Defaults to (0, 0, 0).
@@ -449,10 +445,7 @@ class Mesh:
             Path to image file, either passed output_filename or a temporary file.
         """
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
-            raise RuntimeError(
-                "Mesh.render needs a display. On a headless machine, run under "
-                "`xvfb-run -a` or wrap the call in a pyvirtualdisplay.Display."
-            )
+            raise RuntimeError("Mesh.render needs a display or a virtual framebuffer.")
         with self:
             gmsh.option.set_number("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.VolumeFaces", 1)
