@@ -74,6 +74,25 @@ class TestMeshMetadataAndImmutability:
             raise ValueError("abort")
         assert mesh_sphere_occ.entity_metadata(2, 1).forward_volume == 1
 
+    def test_undeclared_keys(self, model_bd_sphere):
+        mesh = sm.SurfaceMesh.from_geometry(
+            sm.Geometry(model_bd_sphere, ["a"]),
+            sm.OCCSurfaceOptions(tol_angular_deg=30),
+        )
+
+        with mesh:
+            (pg,) = gmsh.model.get_physical_groups_for_entity(3, 1)
+            name = gmsh.model.get_physical_name(3, pg)
+            gmsh.model.remove_physical_groups([(3, pg)])
+            gmsh.model.add_physical_group(3, [1], pg, f"{name}&extra=x")
+            mesh._dirty = True
+        mesh.entity_metadata(3, 1).material = "b"
+        assert mesh.entity_metadata(3, 1).as_dict() == {
+            "tag": "1",
+            "material": "b",
+            "extra": "x",
+        }
+
 
 class TestSurfaceMesh:
     @pytest.mark.parametrize(

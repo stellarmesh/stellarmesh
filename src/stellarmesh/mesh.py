@@ -70,6 +70,10 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+def _parse_metadata(name: str) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(name).items()}
+
+
 class GmshSurfaceAlgo(Enum):
     """Algorithm used by Gmsh for surface meshing."""
 
@@ -298,6 +302,20 @@ class EntityMetadata:
                 + f"dim={self._dim}, tag={self._tag}, name={name}: {value}"
             )
             self._mesh._dirty = True
+
+    def as_dict(self) -> dict[str, str]:
+        """Return every stored key, including keys this class does not declare.
+
+        Returns:
+            Parsed metadata, or an empty dict if the entity has no metadata group.
+        """
+        with self._mesh:
+            try:
+                metadata_group = self._get_metadata_group(create_if_missing=False)
+            except RuntimeError:
+                return {}
+            url_str = gmsh.model.get_physical_name(self._dim, metadata_group)
+            return _parse_metadata(url_str)
 
 
 @dataclass(kw_only=True)
