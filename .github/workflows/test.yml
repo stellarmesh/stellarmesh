@@ -30,8 +30,11 @@ jobs:
           environments: >-
             ci
 
+      - name: Install Xvfb for render tests
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Run tests (build123d env)
         env:
           OPENMC_CROSS_SECTIONS: ${{ github.workspace }}/cross_sections.xml
         run: |
-          pixi run -e ci test-ci
+          xvfb-run -a pixi run -e ci test-ci

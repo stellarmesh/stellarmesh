@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import shutil
 import subprocess
 import tempfile
@@ -437,9 +438,14 @@ class Mesh:
             options: Gmsh numeric options (e.g. ``{"Mesh.SurfaceEdges": 0}``),
                 applied after the defaults set by this method.
 
+        Raises:
+            RuntimeError: If neither ``DISPLAY`` nor ``WAYLAND_DISPLAY`` is set.
+
         Returns:
             Path to image file, either passed output_filename or a temporary file.
         """
+        if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            raise RuntimeError("Mesh.render needs a display or a virtual framebuffer.")
         with self:
             gmsh.option.set_number("Mesh.SurfaceFaces", 1)
             gmsh.option.set_number("Mesh.VolumeFaces", 1)

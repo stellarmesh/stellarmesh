@@ -4,14 +4,18 @@ import copy
 import gc
 import importlib.resources
 import math
+import os
 import subprocess
 from pathlib import Path
 
 import build123d as bd
 import gmsh
+import numpy as np
 import pytest
+from PIL import Image
 
 import stellarmesh as sm
+
 from .. import resources
 
 
@@ -249,3 +253,21 @@ class TestMeshUtilities:
         del mesh
         gc.collect()
         assert not path.exists()
+
+    @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="needs a display")
+    def test_render(self, tmp_path: Path):
+        mesh = sm.SurfaceMesh.from_geometry(
+            sm.Geometry([bd.Solid.make_sphere(5)], ["a"]),
+            sm.OCCSurfaceOptions(tol_angular_deg=10),
+        )
+        path = mesh.render(str(tmp_path / "render.png"), size=(900, 600))
+
+        image = np.asarray(Image.open(path).convert("L"))
+        assert image.shape == (600, 900 - 200)  # Gmsh's menu takes 200 px
+        assert (image < 250).mean() > 0.05
+
+    def test_render_without_display(self, monkeypatch):
+        monkeypatch.delenv("DISPLAY", raising=False)
+        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+        with pytest.raises(RuntimeError, match="virtual framebuffer"):
+            sm.Mesh().render()
