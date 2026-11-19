@@ -62,3 +62,19 @@ class TestGeometryImportExport:
 class TestGeometryOperations:
     def test_geometry_imprint(self, geom_bd_layered_torus):
         geom_bd_layered_torus.imprint()
+
+    def test_geometry_imprint_keeps_order_and_faces(self):
+        small = bd.Pos(0, 5, 10) * bd.Solid.make_box(4, 4, 6)
+        large = bd.Solid.make_box(10, 10, 10)
+        face = bd.Pos(50, 0, 0) * bd.Face.make_rect(10, 10)
+        geom = sm.Geometry([small, large], ["m_small", "m_large"], [face], ["vacuum"])
+        imprinted = geom.imprint()
+
+        for before, after in zip(geom.solids, imprinted.solids, strict=True):
+            assert bd.Solid(after).volume == pytest.approx(
+                bd.Solid(before).volume, rel=1e-6
+            )
+        assert imprinted.material_names == ["m_small", "m_large"]
+        assert len(imprinted.faces) == 1
+        assert imprinted.face_boundary_conditions == ["vacuum"]
+        assert len(bd.Solid(imprinted.solids[1]).faces()) > 6
