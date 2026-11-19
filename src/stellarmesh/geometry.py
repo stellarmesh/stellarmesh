@@ -320,7 +320,7 @@ class Geometry:
         """Imprint faces of current geometry.
 
         Solids keep their order and materials. Faces and their boundary conditions
-        are passed through un-imprinted.
+        are passed through without modification.
 
         Returns:
             A new geometry with the imprinted and merged geometry.
@@ -336,8 +336,7 @@ class Geometry:
         if bldr.HasErrors():
             raise RuntimeError("BOPAlgo_MakeConnected failed.")
 
-        # The result compound's solid order is not the argument order, so each
-        # input is mapped to its own image.
+        # We must manually return solids in argument order
         res_solids: list[TopoDS_Solid] = []
         for i, solid in enumerate(self.solids):
             images = list(bldr.GetModified(solid))
