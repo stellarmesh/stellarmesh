@@ -68,10 +68,6 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
-def _unlink_quietly(path: str) -> None:
-    Path(path).unlink(missing_ok=True)
-
-
 class GmshSurfaceAlgo(Enum):
     """Algorithm used by Gmsh for surface meshing."""
 
@@ -332,15 +328,16 @@ class Mesh:
     def __init__(self, mesh_filename: Optional[PathLike] = None):
         """Initialize a mesh from a .msh file.
 
-        Mesh operations are saved only to a temporary file, deleted when the Mesh is
-        garbage collected. Persist changes externally with the Mesh `write` method.
+        Mesh operations are saved in a temp file. Persist changes externally with the Mesh `write` method.
 
         Args:
             mesh_filename: Optional .msh file to load. Defaults to None.
         """
         with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp_file:
             self._mesh_filename = tmp_file.name
-        weakref.finalize(self, _unlink_quietly, self._mesh_filename)
+        weakref.finalize(
+            self, lambda path: Path(path).unlink(missing_ok=True), self._mesh_filename
+        )
 
         if mesh_filename:
             shutil.copy2(str(mesh_filename), self._mesh_filename)
