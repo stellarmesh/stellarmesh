@@ -142,7 +142,7 @@ class Geometry:
                     else getattr(s, "wrapped", None)
                 )
 
-                if s.wrapped is None:  # type: ignore
+                if s_wrapped is None:
                     raise ValueError(
                         f"{s} {i} has no wrapped TopoDS_Shape. Is it valid?"
                     )

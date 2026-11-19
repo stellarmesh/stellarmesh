@@ -29,6 +29,11 @@ class TestGeometryInitialization:
         with pytest.raises(ValueError):
             sm.Geometry(solids, material_names)
 
+    def test_geometry_init_ocp_face(self):
+        face = bd.Face.make_rect(10, 10).wrapped
+        geom = sm.Geometry(surfaces=[face], surface_boundary_conditions=["vacuum"])
+        assert geom.faces == [face]
+
 
 class TestGeometryImportExport:
     def test_step_import_compound(self, model_bd_layered_torus):
