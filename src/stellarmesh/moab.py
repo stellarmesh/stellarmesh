@@ -43,7 +43,7 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-# Gmsh element type -> (MOAB type, nodes per element) for the elements written.
+# {Gmsh element type: (MOAB type, nodes per element)}
 _MOAB_ELEMENT_TYPES: Final = {
     2: (pymoab.types.MBTRI, 3),
     4: (pymoab.types.MBTET, 4),
@@ -504,7 +504,7 @@ class MOABModel:
         )
 
     def _add_nodes(self, dim: int) -> dict[int, int]:
-        """Add the nodes of the elements `_create_elements` writes for a dimension.
+        """Add Gmsh nodes to MOAB model.
 
         Nodes used by no such element, such as volume-interior nodes when only
         triangles are written, are skipped.
