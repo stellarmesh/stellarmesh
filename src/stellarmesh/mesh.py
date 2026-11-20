@@ -69,8 +69,7 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-# MOAB NAME tags hold 32 characters and DAGMC prefixes material groups with "mat:".
-MAX_MATERIAL_LENGTH = 28
+MOAB_MAX_MATERIAL_LENGTH = 28
 
 
 def _parse_metadata(name: str) -> dict[str, str]:
@@ -499,14 +498,7 @@ class Mesh:
         cls,
         meshes: Mapping[str, Mesh],
     ) -> tuple[Self, dict[str, dict[tuple[int, int], int]]]:
-        """Merge meshes into one, keeping each input's entities and metadata.
-
-        The first input keeps its tags. Each later input's entity tags are offset by
-        the next power of ten above the largest entity tag merged so far; node and
-        element tags by the running maxima. Metadata tags and surface volume senses
-        are rewritten to the offset tags. Only single-entity (metadata) physical
-        groups of surfaces and volumes are copied. Nothing is imprinted: inputs must
-        not overlap or share surfaces.
+        """Merge meshes, keeping each input's entities and metadata.
 
         Args:
             meshes: Input meshes by label. Their contexts must be closed.
@@ -514,10 +506,10 @@ class Mesh:
         Raises:
             ValueError: If no meshes are given, or a merged volume has no material or
                 one longer than `MAX_MATERIAL_LENGTH`.
-            RuntimeError: If an input has an open context.
+            RuntimeError: If an input mesh is open in a context.
 
         Returns:
-            Merged mesh, and per label a map from ``(dim, original_tag)`` to the
+            Merged mesh and a map from ``(dim, original_tag)`` to the
             merged tag for surfaces and volumes.
         """
         if not meshes:
@@ -588,7 +580,7 @@ class Mesh:
                             material = data.get("material", "None")
                             if material in ("", "None"):
                                 missing.append((label, tag))
-                            elif len(material) > MAX_MATERIAL_LENGTH:
+                            elif len(material) > MOAB_MAX_MATERIAL_LENGTH:
                                 too_long.append((label, tag, material))
                         gmsh.model.add_physical_group(
                             dim, [new_tag], new_tag, urlencode(data)
@@ -600,7 +592,7 @@ class Mesh:
                 raise ValueError(f"Volumes without a material: {missing}")
             if too_long:
                 raise ValueError(
-                    f"Materials longer than {MAX_MATERIAL_LENGTH} characters: "
+                    f"Materials longer than {MOAB_MAX_MATERIAL_LENGTH} characters: "
                     f"{too_long}"
                 )
             out._save_changes(save_all=True)

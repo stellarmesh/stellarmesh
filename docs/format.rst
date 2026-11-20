@@ -43,8 +43,7 @@ Surface groups
 * ``forward_volume`` — the volume tag on the surface's outward-normal
   side.
 * ``reverse_volume`` — the volume tag on the other side. Use ``None``
-  (or omit the key) for exterior surfaces (boundary of the model with
-  vacuum).
+  (or omit the key) for exterior surfaces. 
 
 Edges and vertices
 ==================
@@ -60,10 +59,8 @@ Merging
 The first input keeps its tags. Each later input's entity tags are
 offset by the next power of ten above the largest entity tag merged so
 far (e.g. a first mesh with tags up to 87 puts the second at 100 +
-tag); node and element tags are offset by the running maxima. The
-``tag``, ``forward_volume`` and ``reverse_volume`` values are rewritten
-to the offset tags. ``Mesh.merge`` also returns a map from each label's
-``(dim, original_tag)`` to the merged tag.
+tag). This helps the user to quickly identify which source mesh an entity
+came from. Node and element tags are offset by the running maxima.
 
 ------------------
 Consumer behaviour
