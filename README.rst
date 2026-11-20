@@ -18,6 +18,7 @@ supports the creation of DAGMC geometry from CAD models.
 * ✅ Surface boundary conditions
 * ✅ Imprinting and merging of conformal geometry
 * ✅ Mesh refinement
+* ✅ Mesh merging
 * ✅ Programmatic manipulation of .h5m tags
 * ✅ Automated testing and integration
 
