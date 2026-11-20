@@ -516,6 +516,7 @@ class MOABModel:
             Map from Gmsh node tag to MOAB vertex handle.
         """
         node_tags, coords, _ = gmsh.model.mesh.get_nodes()
+        node_tags, coords = np.asarray(node_tags), np.asarray(coords).reshape(-1, 3)
         element_types, _, element_nodes = gmsh.model.mesh.get_elements(dim)
         used_nodes = [
             nodes
@@ -523,7 +524,7 @@ class MOABModel:
             if element_type in _MOAB_ELEMENT_TYPES
         ]
         used = np.isin(node_tags, np.concatenate([*used_nodes, []]))
-        node_tags, coords = node_tags[used], coords.reshape(-1, 3)[used].ravel()
+        node_tags, coords = node_tags[used], coords[used].ravel()
         if len(node_tags) != len(np.unique(node_tags)):
             raise ValueError("Duplicate node tags found.")
         if np.isnan(coords).any():
@@ -679,7 +680,7 @@ class DAGMCModel(MOABModel):
         input_filename: PathLike,
         output_filename: PathLike,
         binary_path: str = "make_watertight",
-    ) -> bool:
+    ) -> None:
         """Make mesh watertight.
 
         Args:
